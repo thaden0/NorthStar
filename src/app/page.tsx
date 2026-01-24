@@ -28,6 +28,8 @@ import {
 import { FiExternalLink, FiGithub, FiMail, FiMapPin, FiLinkedin, FiChevronDown, FiCode } from 'react-icons/fi';
 import styles from './page.module.css';
 
+export const dynamic = 'force-dynamic';
+
 // Icon mapping
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   SiJavascript,

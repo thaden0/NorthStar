@@ -2,6 +2,8 @@ import { db } from '@/lib/db';
 import { FiFolder, FiFile, FiImage, FiFileText, FiDownload, FiTrash2 } from 'react-icons/fi';
 import styles from '../dashboard.module.css';
 
+export const dynamic = 'force-dynamic';
+
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 Bytes';
   const k = 1024;

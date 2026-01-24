@@ -3,6 +3,8 @@ import { getSession, isSuperAdmin } from '@/lib/auth';
 import { FiSettings, FiGlobe, FiMail, FiDatabase, FiShield } from 'react-icons/fi';
 import styles from '../dashboard.module.css';
 
+export const dynamic = 'force-dynamic';
+
 export default async function SiteSettingsPage() {
   const session = await getSession();
   

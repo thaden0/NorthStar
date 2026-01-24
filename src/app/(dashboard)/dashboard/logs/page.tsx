@@ -4,6 +4,8 @@ import { db } from '@/lib/db';
 import { FiFileText, FiInfo, FiAlertTriangle, FiAlertCircle, FiFilter } from 'react-icons/fi';
 import styles from '../dashboard.module.css';
 
+export const dynamic = 'force-dynamic';
+
 async function getLogs() {
   const logs = await db.log.findMany({
     include: {

@@ -4,6 +4,8 @@ import { db } from '@/lib/db';
 import { FiUsers, FiMail, FiShield, FiEdit, FiTrash2 } from 'react-icons/fi';
 import styles from '../dashboard.module.css';
 
+export const dynamic = 'force-dynamic';
+
 async function getUsers() {
   const users = await db.user.findMany({
     include: {

@@ -70,7 +70,7 @@ export async function loginAction(formData: FormData): Promise<ActionResult> {
   const validation = loginSchema.safeParse(data);
   if (!validation.success) {
     const errors: Record<string, string> = {};
-    validation.error.errors.forEach((err) => {
+    validation.error.issues.forEach((err) => {
       if (err.path[0]) {
         errors[err.path[0] as string] = err.message;
       }
@@ -98,7 +98,7 @@ export async function registerAction(formData: FormData): Promise<ActionResult> 
   const validation = registerSchema.safeParse(data);
   if (!validation.success) {
     const errors: Record<string, string> = {};
-    validation.error.errors.forEach((err) => {
+    validation.error.issues.forEach((err) => {
       if (err.path[0]) {
         errors[err.path[0] as string] = err.message;
       }
@@ -144,7 +144,7 @@ export async function updateProfileAction(formData: FormData): Promise<ActionRes
   const validation = updateProfileSchema.safeParse(data);
   if (!validation.success) {
     const errors: Record<string, string> = {};
-    validation.error.errors.forEach((err) => {
+    validation.error.issues.forEach((err) => {
       if (err.path[0]) {
         errors[err.path[0] as string] = err.message;
       }
@@ -188,7 +188,7 @@ export async function changePasswordAction(formData: FormData): Promise<ActionRe
   const validation = changePasswordSchema.safeParse(data);
   if (!validation.success) {
     const errors: Record<string, string> = {};
-    validation.error.errors.forEach((err) => {
+    validation.error.issues.forEach((err) => {
       if (err.path[0]) {
         errors[err.path[0] as string] = err.message;
       }

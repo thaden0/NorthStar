@@ -3,6 +3,8 @@ import { db } from '@/lib/db';
 import { FiUsers, FiFolder, FiFileText, FiCpu, FiTrendingUp, FiActivity } from 'react-icons/fi';
 import styles from './dashboard.module.css';
 
+export const dynamic = 'force-dynamic';
+
 async function getStats() {
   const [usersCount, filesCount, logsCount, insightsCount] = await Promise.all([
     db.user.count(),

@@ -14,6 +14,8 @@ import {
 } from 'react-icons/fi';
 import styles from '../dashboard.module.css';
 
+export const dynamic = 'force-dynamic';
+
 async function getPortfolioStats() {
   const [skills, education, experiences, services, projects, faqs] = await Promise.all([
     db.skill.count(),

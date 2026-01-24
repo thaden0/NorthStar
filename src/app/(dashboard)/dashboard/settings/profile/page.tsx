@@ -2,7 +2,9 @@ import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import { FiUser } from 'react-icons/fi';
 import ProfileForm from './ProfileForm';
-import styles from '../page.module.css';
+import styles from './profile.module.css';
+
+export const dynamic = 'force-dynamic';
 
 export default async function ProfilePage() {
   const session = await getSession();
@@ -12,7 +14,7 @@ export default async function ProfilePage() {
   }
 
   return (
-    <div className={styles?.page || ''} style={{ padding: 'var(--space-6)', maxWidth: '800px', margin: '0 auto' }}>
+    <div className={styles.container} style={{ padding: 'var(--space-6)', maxWidth: '800px', margin: '0 auto' }}>
       <div style={{ marginBottom: 'var(--space-6)' }}>
         <h1 style={{ fontSize: '2rem', display: 'flex', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
           <FiUser style={{ marginRight: '12px', color: 'var(--blue-ice)' }} />
