@@ -1,0 +1,48 @@
+services:
+  agent-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${PORT:-3002}:3002"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/agent_service
+      - JWT_SECRET=${JWT_SECRET:-northstar-agent-service-secret-key-2026}
+      - JWT_ISSUER=${JWT_ISSUER:-north-star}
+      - JWT_AUDIENCE=${JWT_AUDIENCE:-agent-service}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - OLLAMA_DEFAULT_MODEL=${OLLAMA_DEFAULT_MODEL:-qwen3}
+      - PLAYWRIGHT_HEADLESS=true
+      - NODE_ENV=production
+      - PORT=3002
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - agent-network
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=agent_service
+    volumes:
+      - agent_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${DB_PORT:-5437}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - agent-network
+
+volumes:
+  agent_postgres_data:
+
+networks:
+  agent-network:
+    driver: bridge

@@ -1,0 +1,216 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ==================== AUTH & USERS ====================
+
+model User {
+  id                String    @id @default(cuid())
+  email             String    @unique
+  hashedPassword    String
+  name              String
+  avatar            String?
+  emailVerified     Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  roles             UserRole[]
+  sessions          Session[]
+  logs              Log[]
+
+  @@index([email])
+}
+
+model Role {
+  id          String     @id @default(cuid())
+  name        String     @unique
+  description String?
+  createdAt   DateTime   @default(now())
+
+  // Relations
+  users       UserRole[]
+}
+
+model UserRole {
+  id        String   @id @default(cuid())
+  userId    String
+  roleId    String
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@index([userId])
+  @@index([roleId])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ==================== PORTFOLIO ====================
+
+model PortfolioSettings {
+  id              String   @id @default(cuid())
+  heroTitle       String   @default("Leonard Waugh")
+  heroSubtitle    String   @default("Full-Stack Developer, DevOps Engineer, Application Architect, Mobile Developer")
+  heroImage       String?
+  aboutTitle      String   @default("About me")
+  aboutText       String   @db.Text
+  aboutImage      String?
+  name            String   @default("Leonard Waugh")
+  profile         String   @default("Senior Full-Stack Developer")
+  email           String   @default("leonard.l.waugh@gmail.com")
+  location        String   @default("Tilbury, Ontario, Canada")
+  linkedIn        String?
+  github          String?
+  resumeSummary   String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Skill {
+  id          String   @id @default(cuid())
+  name        String
+  category    String   // languages, frameworks, tools
+  icon        String?  // devicon class or react-icons name
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([category])
+}
+
+model Education {
+  id          String   @id @default(cuid())
+  degree      String
+  institution String
+  startYear   String
+  endYear     String?
+  description String?  @db.Text
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Experience {
+  id          String   @id @default(cuid())
+  title       String
+  company     String
+  location    String?
+  startDate   String
+  endDate     String?
+  description String?  @db.Text
+  highlights  String[] // Array of bullet points
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Service {
+  id          String   @id @default(cuid())
+  title       String
+  description String   @db.Text
+  icon        String?
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  title       String
+  description String   @db.Text
+  image       String?
+  technologies String[] // Array of tech tags
+  liveUrl     String?
+  sourceUrl   String?
+  featured    Boolean  @default(false)
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model FAQ {
+  id       String   @id @default(cuid())
+  question String
+  answer   String   @db.Text
+  order    Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ==================== FILES ====================
+
+model File {
+  id          String   @id @default(cuid())
+  name        String
+  key         String   @unique
+  url         String
+  size        Int
+  type        String
+  uploadedBy  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([uploadedBy])
+}
+
+// ==================== SITE SETTINGS ====================
+
+model SiteSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ==================== LOGS ====================
+
+model Log {
+  id        String   @id @default(cuid())
+  level     String   // info, warn, error
+  message   String   @db.Text
+  metadata  Json?
+  userId    String?
+  createdAt DateTime @default(now())
+
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([level])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// ==================== AI INSIGHTS ====================
+
+model AIInsight {
+  id        String   @id @default(cuid())
+  title     String
+  content   String   @db.Text
+  type      String   // analytics, recommendation, alert
+  status    String   @default("unread") // unread, read, archived
+  metadata  Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type])
+  @@index([status])
+}
