@@ -18,7 +18,17 @@ function getFileIcon(type: string) {
   return <FiFile />;
 }
 
-async function getFiles() {
+async function getFiles(): Promise<{
+  id: string;
+  name: string;
+  type: string;
+  size: number;
+  url: string;
+  key: string;
+  createdAt: Date;
+  updatedAt: Date;
+  uploadedBy: string | null;
+}[]> {
   const files = await db.file.findMany({
     orderBy: { createdAt: 'desc' },
   });
