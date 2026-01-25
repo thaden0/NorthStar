@@ -140,7 +140,7 @@ export const useTrinketStore = create<TrinketState>((set, get) => ({
     set((state) => {
       const newTrinkets = state.trinkets.map((t) =>
         t.id === id ? { ...t, ...updates } : t
-      );
+      ) as Trinket[];
       
       // Also update active trinket if it's the one being updated
       const newActiveTrinket =
@@ -159,10 +159,10 @@ export const useTrinketStore = create<TrinketState>((set, get) => ({
     set((state) => ({
       trinkets: state.trinkets.map((t) =>
         t.id === id ? { ...t, isInteracted: true } : t
-      ),
+      ) as Trinket[],
       activeTrinket:
         state.activeTrinket?.id === id
-          ? { ...state.activeTrinket, isInteracted: true }
+          ? ({ ...state.activeTrinket, isInteracted: true } as Trinket)
           : state.activeTrinket,
     }));
   },
