@@ -56,6 +56,14 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   FiCode,
 };
 
+type Skill = {
+  id: string;
+  name: string;
+  category: string | null;
+  icon: string | null;
+  order: number;
+};
+
 async function getPortfolioData() {
   const [settings, skills, education, experiences, services, projects, faqs] = await Promise.all([
     db.portfolioSettings.findFirst(),
@@ -67,16 +75,16 @@ async function getPortfolioData() {
     db.fAQ.findMany({ orderBy: { order: 'asc' } }),
   ]);
 
-  return { settings, skills, education, experiences, services, projects, faqs };
+  return { settings, skills: skills as Skill[], education, experiences, services, projects, faqs };
 }
 
 export default async function HomePage() {
   const session = await getSession();
   const { settings, skills, education, experiences, services, projects, faqs } = await getPortfolioData();
 
-  const languageSkills = skills.filter((s: { category: string | null }) => s.category === 'languages');
-  const frameworkSkills = skills.filter((s: { category: string | null }) => s.category === 'frameworks');
-  const toolSkills = skills.filter((s: { category: string | null }) => s.category === 'tools');
+  const languageSkills = skills.filter(s => s.category === 'languages');
+  const frameworkSkills = skills.filter(s => s.category === 'frameworks');
+  const toolSkills = skills.filter(s => s.category === 'tools');
 
   return (
     <>
