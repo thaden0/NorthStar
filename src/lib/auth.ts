@@ -159,7 +159,7 @@ export async function authenticateUser(email: string, password: string) {
     email: user.email,
     name: user.name,
     avatar: user.avatar,
-    roles: user.roles.map((r) => r.role.name),
+    roles: user.roles.map((r: { role: { name: string } }) => r.role.name),
   };
 }
 
