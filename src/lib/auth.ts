@@ -88,7 +88,7 @@ export async function getSession(): Promise<Session | null> {
         email: session.user.email,
         name: session.user.name,
         avatar: session.user.avatar,
-        roles: session.user.roles.map((r) => r.role.name),
+        roles: session.user.roles.map((r: { role: { name: string } }) => r.role.name),
       },
     };
   } catch {
