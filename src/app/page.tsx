@@ -74,9 +74,9 @@ export default async function HomePage() {
   const session = await getSession();
   const { settings, skills, education, experiences, services, projects, faqs } = await getPortfolioData();
 
-  const languageSkills = skills.filter(s => s.category === 'languages');
-  const frameworkSkills = skills.filter(s => s.category === 'frameworks');
-  const toolSkills = skills.filter(s => s.category === 'tools');
+  const languageSkills = skills.filter((s: { category: string | null }) => s.category === 'languages');
+  const frameworkSkills = skills.filter((s: { category: string | null }) => s.category === 'frameworks');
+  const toolSkills = skills.filter((s: { category: string | null }) => s.category === 'tools');
 
   return (
     <>
