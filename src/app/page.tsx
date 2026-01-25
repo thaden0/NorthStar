@@ -149,7 +149,7 @@ export default async function HomePage() {
                 <div className={styles.glassCard}>
                   <h3>About me</h3>
                   <div className={styles.aboutContent}>
-                    {settings?.aboutText.split('\n\n').map((paragraph, i) => (
+                    {settings?.aboutText.split('\n\n').map((paragraph: string, i: number) => (
                       <p key={i}>{paragraph}</p>
                     ))}
                   </div>
