@@ -100,6 +100,23 @@ export const mcpServers = pgTable('mcp_servers', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
+// Model analytics - tracks model performance and usage
+export const modelAnalytics = pgTable('model_analytics', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  modelName: text('model_name').notNull(),
+  executionId: uuid('execution_id')
+    .references(() => agentExecutions.id, { onDelete: 'cascade' }),
+  userId: text('user_id')
+    .references(() => users.id, { onDelete: 'set null' }),
+  promptTokens: integer('prompt_tokens'),
+  completionTokens: integer('completion_tokens'),
+  totalTokens: integer('total_tokens'),
+  responseTimeMs: integer('response_time_ms').notNull(),
+  success: boolean('success').notNull().default(true),
+  errorType: text('error_type'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   conversations: many(conversations),
@@ -151,3 +168,5 @@ export type ServiceSetting = typeof serviceSettings.$inferSelect;
 export type NewServiceSetting = typeof serviceSettings.$inferInsert;
 export type McpServer = typeof mcpServers.$inferSelect;
 export type NewMcpServer = typeof mcpServers.$inferInsert;
+export type ModelAnalytic = typeof modelAnalytics.$inferSelect;
+export type NewModelAnalytic = typeof modelAnalytics.$inferInsert;

@@ -50,6 +50,34 @@ export interface AgentExecution {
   completedAt?: string;
 }
 
+export interface OllamaModel {
+  name: string;
+  model: string;
+  modified_at: string;
+  size: number;
+  digest: string;
+  details?: {
+    parent_model?: string;
+    format?: string;
+    family?: string;
+    families?: string[];
+    parameter_size?: string;
+    quantization_level?: string;
+  };
+}
+
+export interface ModelStats {
+  modelName: string;
+  totalRequests: number;
+  successfulRequests: number;
+  failedRequests: number;
+  averageResponseTimeMs: number;
+  minResponseTimeMs: number;
+  maxResponseTimeMs: number;
+  totalTokens: number;
+  lastUsed: string | null;
+}
+
 /**
  * Generate JWT token for Agent Service authentication
  */
@@ -208,8 +236,40 @@ export class AgentServiceClient {
   /**
    * Get available Ollama models
    */
-  async getModels(): Promise<{ models: Array<{ name: string; size: string }> }> {
-    return this.fetch('/settings/ollama/models');
+  async getModels(): Promise<OllamaModel[]> {
+    return this.fetch<OllamaModel[]>('/settings/ollama/models');
+  }
+
+  /**
+   * Get the default model
+   */
+  async getDefaultModel(): Promise<string> {
+    const result = await this.fetch<{ model: string }>('/settings/ollama/default-model');
+    return result.model;
+  }
+
+  /**
+   * Set the default model
+   */
+  async setDefaultModel(model: string): Promise<void> {
+    await this.fetch('/settings/ollama/default-model', {
+      method: 'PUT',
+      body: JSON.stringify({ model }),
+    });
+  }
+
+  /**
+   * Get analytics for all models
+   */
+  async getAllModelStats(): Promise<ModelStats[]> {
+    return this.fetch<ModelStats[]>('/settings/analytics/models');
+  }
+
+  /**
+   * Get analytics for a specific model
+   */
+  async getModelStats(modelName: string): Promise<ModelStats | null> {
+    return this.fetch<ModelStats | null>(`/settings/analytics/models/${encodeURIComponent(modelName)}`);
   }
 
   /**

@@ -4,6 +4,8 @@ import { nanoid } from 'nanoid';
 import { OllamaService } from '../llm/ollama.service';
 import { AgentToolsService } from './agent-tools.service';
 import { DatabaseService } from '../database/database.service';
+import { AnalyticsService } from '../settings/analytics.service';
+import { SettingsService } from '../settings/settings.service';
 import {
   AgentMessage,
   ChatRequest,
@@ -127,6 +129,8 @@ export class AgentService {
     private ollamaService: OllamaService,
     private agentToolsService: AgentToolsService,
     private databaseService: DatabaseService,
+    private analyticsService: AnalyticsService,
+    private settingsService: SettingsService,
   ) {}
 
   async processChat(request: ChatRequest): Promise<{ conversationId: string; emitter: EventEmitter }> {
@@ -258,16 +262,35 @@ export class AgentService {
       timestamp: new Date().toISOString(),
     });
 
+    // Get the current model from settings
+    const modelName = await this.settingsService.getDefaultModel();
+    let totalLlmTimeMs = 0;
+
     try {
       while (!isComplete && iterations < context.maxIterations) {
         iterations++;
 
-        // Generate response
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // Generate response with timing
+        const llmStartTime = Date.now();
         const result = await this.ollamaService.generate({
           messages: coreMessages,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           tools: tools as any,
           temperature: 0.7,
+        });
+        const llmDuration = Date.now() - llmStartTime;
+        totalLlmTimeMs += llmDuration;
+
+        // Record analytics for this LLM call
+        await this.analyticsService.recordAnalytics({
+          modelName,
+          executionId: execution.id,
+          userId: context.userId,
+          responseTimeMs: llmDuration,
+          success: true,
+          promptTokens: result.usage?.promptTokens,
+          completionTokens: result.usage?.completionTokens,
+          totalTokens: result.usage?.totalTokens,
         });
 
         // Process tool calls if any
@@ -425,6 +448,16 @@ export class AgentService {
 
       return finalResult;
     } catch (error) {
+      // Record failed analytics
+      await this.analyticsService.recordAnalytics({
+        modelName,
+        executionId: execution.id,
+        userId: context.userId,
+        responseTimeMs: totalLlmTimeMs,
+        success: false,
+        errorType: error instanceof Error ? error.name : 'Unknown',
+      });
+
       // Update execution as failed
       await db
         .update(agentExecutions)

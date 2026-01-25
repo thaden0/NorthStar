@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiQuery, ApiBody } from '@nestjs/swagger';
 import { SettingsService } from './settings.service';
+import { AnalyticsService } from './analytics.service';
 import { JwtAuthGuard } from '../auth';
 import {
   ServiceSettingSchema,
@@ -32,7 +33,10 @@ import { ZodError } from 'zod';
 @UseGuards(JwtAuthGuard)
 @Controller('settings')
 export class SettingsController implements OnModuleInit {
-  constructor(private settingsService: SettingsService) {}
+  constructor(
+    private settingsService: SettingsService,
+    private analyticsService: AnalyticsService,
+  ) {}
 
   async onModuleInit() {
     await this.settingsService.initializeDefaults();
@@ -240,5 +244,45 @@ export class SettingsController implements OnModuleInit {
   async toggleMcpServer(@Param('id') id: string, @Body('enabled') enabled: boolean) {
     const server = await this.settingsService.toggleMcpServer(id, enabled);
     return { success: true, data: server };
+  }
+
+  // ============ Model Analytics ============
+
+  @Get('analytics/models')
+  @ApiOperation({ summary: 'Get analytics for all models' })
+  async getAllModelStats() {
+    const stats = await this.analyticsService.getAllModelStats();
+    return { success: true, data: stats };
+  }
+
+  @Get('analytics/models/:modelName')
+  @ApiOperation({ summary: 'Get analytics for a specific model' })
+  @ApiParam({ name: 'modelName', type: 'string' })
+  async getModelStats(@Param('modelName') modelName: string) {
+    const stats = await this.analyticsService.getModelStats(modelName);
+    return { success: true, data: stats };
+  }
+
+  @Get('analytics/models/:modelName/recent')
+  @ApiOperation({ summary: 'Get recent analytics entries for a model' })
+  @ApiParam({ name: 'modelName', type: 'string' })
+  @ApiQuery({ name: 'limit', required: false, type: 'number' })
+  async getRecentAnalytics(
+    @Param('modelName') modelName: string,
+    @Query('limit') limit?: number,
+  ) {
+    const entries = await this.analyticsService.getRecentAnalytics(
+      modelName,
+      limit || 50,
+    );
+    return { success: true, data: entries };
+  }
+
+  @Get('analytics/models/:modelName/hourly')
+  @ApiOperation({ summary: 'Get hourly stats for a model (last 24h)' })
+  @ApiParam({ name: 'modelName', type: 'string' })
+  async getHourlyStats(@Param('modelName') modelName: string) {
+    const stats = await this.analyticsService.getHourlyStats(modelName);
+    return { success: true, data: stats };
   }
 }

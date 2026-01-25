@@ -14,7 +14,7 @@ import {
 const DEFAULT_SETTINGS = [
   {
     key: 'ollama.defaultModel',
-    value: 'qwen3',
+    value: 'llama3.2',
     description: 'Default Ollama model for agent inference',
     category: 'llm',
   },
