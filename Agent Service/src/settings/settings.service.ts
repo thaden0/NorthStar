@@ -60,24 +60,32 @@ export class SettingsService {
   ) {}
 
   async initializeDefaults(): Promise<void> {
-    const db = this.databaseService.getDb();
-
-    for (const setting of DEFAULT_SETTINGS) {
-      const existing = await db
-        .select()
-        .from(serviceSettings)
-        .where(eq(serviceSettings.key, setting.key))
-        .limit(1);
-
-      if (existing.length === 0) {
-        await db.insert(serviceSettings).values({
-          key: setting.key,
-          value: setting.value,
-          description: setting.description,
-          category: setting.category,
-        });
-        this.logger.log(`Initialized default setting: ${setting.key}`);
+    try {
+      const db = this.databaseService.getDb();
+      if (!db) {
+        this.logger.warn('Database not yet initialized, skipping default settings initialization');
+        return;
       }
+
+      for (const setting of DEFAULT_SETTINGS) {
+        const existing = await db
+          .select()
+          .from(serviceSettings)
+          .where(eq(serviceSettings.key, setting.key))
+          .limit(1);
+
+        if (existing.length === 0) {
+          await db.insert(serviceSettings).values({
+            key: setting.key,
+            value: setting.value,
+            description: setting.description,
+            category: setting.category,
+          });
+          this.logger.log(`Initialized default setting: ${setting.key}`);
+        }
+      }
+    } catch (error) {
+      this.logger.error(`Failed to initialize default settings: ${error}`);
     }
   }
 
