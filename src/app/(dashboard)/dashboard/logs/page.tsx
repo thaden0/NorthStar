@@ -6,7 +6,18 @@ import styles from '../dashboard.module.css';
 
 export const dynamic = 'force-dynamic';
 
-async function getLogs() {
+async function getLogs(): Promise<{
+  id: string;
+  level: string;
+  message: string;
+  metadata: unknown;
+  createdAt: Date;
+  userId: string | null;
+  user: {
+    name: string;
+    email: string;
+  } | null;
+}[]> {
   const logs = await db.log.findMany({
     include: {
       user: {
