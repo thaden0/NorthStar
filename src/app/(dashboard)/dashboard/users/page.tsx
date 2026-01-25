@@ -7,7 +7,21 @@ import styles from '../dashboard.module.css';
 
 export const dynamic = 'force-dynamic';
 
-async function getUsers() {
+async function getUsers(): Promise<{
+  id: string;
+  name: string;
+  email: string;
+  avatar: string | null;
+  hashedPassword: string;
+  createdAt: Date;
+  updatedAt: Date;
+  roles: {
+    id: string;
+    role: {
+      name: string;
+    };
+  }[];
+}[]> {
   const users = await db.user.findMany({
     include: {
       roles: {
