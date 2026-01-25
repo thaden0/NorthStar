@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import Link from 'next/link';
 import { getSession, isSuperAdmin } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { FiUsers, FiMail, FiShield, FiEdit, FiTrash2 } from 'react-icons/fi';
@@ -124,7 +125,8 @@ export default async function UsersPage() {
                   </td>
                   <td style={{ padding: 'var(--space-4)', textAlign: 'right' }}>
                     <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
-                      <button
+                      <Link
+                        href={`/dashboard/users/${user.id}/edit`}
                         style={{
                           display: 'flex',
                           alignItems: 'center',
@@ -136,10 +138,11 @@ export default async function UsersPage() {
                           borderRadius: 'var(--radius-md)',
                           color: 'var(--blue-ice)',
                           cursor: 'pointer',
+                          textDecoration: 'none',
                         }}
                       >
                         <FiEdit />
-                      </button>
+                      </Link>
                       <button
                         style={{
                           display: 'flex',
