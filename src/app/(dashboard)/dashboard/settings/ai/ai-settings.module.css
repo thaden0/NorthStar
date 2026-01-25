@@ -189,3 +189,81 @@
   justify-content: center;
   color: white;
 }
+
+/* Pull Model Form */
+.pullModelForm {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.pullModelInput {
+  flex: 1;
+  padding: var(--space-3) var(--space-4);
+  background: var(--glass-2);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  transition: all var(--transition-fast);
+}
+
+.pullModelInput:focus {
+  outline: none;
+  border-color: var(--blue-electric);
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.2);
+}
+
+.pullModelInput::placeholder {
+  color: var(--text-muted);
+}
+
+.pullModelInput:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.pullModelButton {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  background: var(--gradient-primary);
+  border: none;
+  border-radius: var(--radius-lg);
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.pullModelButton:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(59, 130, 246, 0.3);
+}
+
+.pullModelButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@media (max-width: 600px) {
+  .pullModelForm {
+    flex-direction: column;
+  }
+  
+  .pullModelInput {
+    width: 100%;
+  }
+  
+  .pullModelButton {
+    width: 100%;
+    justify-content: center;
+  }
+}

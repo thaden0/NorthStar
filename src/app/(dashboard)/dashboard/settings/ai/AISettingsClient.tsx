@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { FiCheck, FiCpu, FiClock, FiActivity, FiDatabase, FiZap } from 'react-icons/fi';
+import { FiCheck, FiCpu, FiClock, FiActivity, FiDatabase, FiZap, FiDownload, FiLoader } from 'react-icons/fi';
 import { OllamaModel, ModelStats } from '@/lib/agent-service';
 import styles from './ai-settings.module.css';
 
@@ -32,8 +33,11 @@ export default function AISettingsClient({
   modelStats,
   agentServiceOnline,
 }: AISettingsClientProps) {
+  const router = useRouter();
   const [selectedModel, setSelectedModel] = useState(currentModel);
   const [isPending, startTransition] = useTransition();
+  const [pullModelName, setPullModelName] = useState('');
+  const [isPulling, setIsPulling] = useState(false);
 
   const handleSelectModel = async (modelName: string) => {
     if (modelName === selectedModel) return;
@@ -54,6 +58,39 @@ export default function AISettingsClient({
         toast.error('Failed to update default model');
       }
     });
+  };
+
+  const handlePullModel = async () => {
+    if (!pullModelName.trim()) {
+      toast.error('Please enter a model name');
+      return;
+    }
+
+    setIsPulling(true);
+    toast.info(`Pulling model ${pullModelName}... This may take several minutes for large models.`);
+
+    try {
+      const res = await fetch('/api/agent/settings/pull-model', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: pullModelName.trim() }),
+      });
+      
+      const result = await res.json();
+      
+      if (result.success) {
+        toast.success(result.message || `Model ${pullModelName} pulled successfully!`);
+        setPullModelName('');
+        // Refresh the page to show new model
+        router.refresh();
+      } else {
+        toast.error(result.error || result.message || 'Failed to pull model');
+      }
+    } catch {
+      toast.error('Failed to pull model. Check if the model name is correct.');
+    } finally {
+      setIsPulling(false);
+    }
   };
 
   const getStatsForModel = (modelName: string): ModelStats | undefined => {
@@ -144,6 +181,57 @@ export default function AISettingsClient({
         </div>
       </div>
 
+      {/* Pull New Model */}
+      {agentServiceOnline && (
+        <div className={styles.statsCard}>
+          <div className={styles.statsHeader}>
+            <h3>
+              <FiDownload />
+              Pull New Model
+            </h3>
+          </div>
+          <div className={styles.statsContent}>
+            <p style={{ color: 'var(--text-muted)', marginBottom: 'var(--space-4)' }}>
+              Download a new model from the Ollama registry. Popular models include: 
+              <code style={{ margin: '0 4px' }}>llama3.2</code>, 
+              <code style={{ margin: '0 4px' }}>mistral</code>, 
+              <code style={{ margin: '0 4px' }}>codellama</code>, 
+              <code style={{ margin: '0 4px' }}>phi3</code>
+            </p>
+            <div className={styles.pullModelForm}>
+              <input
+                type="text"
+                value={pullModelName}
+                onChange={(e) => setPullModelName(e.target.value)}
+                placeholder="Enter model name (e.g., llama3.2:3b)"
+                className={styles.pullModelInput}
+                disabled={isPulling}
+                onKeyDown={(e) => e.key === 'Enter' && handlePullModel()}
+              />
+              <button
+                onClick={handlePullModel}
+                disabled={isPulling || !pullModelName.trim()}
+                className={styles.pullModelButton}
+              >
+                {isPulling ? (
+                  <>
+                    <FiLoader className={styles.spinning} />
+                    Pulling...
+                  </>
+                ) : (
+                  <>
+                    <FiDownload />
+                    Pull Model
+                  </>
+                )}
+              </button>
+            </div>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: 'var(--space-3)' }}>
+              Note: Large models can take several minutes to download. Check the Ollama server logs for progress.
+            </p>
+          </div>
+        </div>
+      )}
       {/* Selected Model Stats */}
       <div className={styles.statsCard}>
         <div className={styles.statsHeader}>

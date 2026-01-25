@@ -273,6 +273,16 @@ export class AgentServiceClient {
   }
 
   /**
+   * Pull a new model from Ollama registry
+   */
+  async pullModel(modelName: string): Promise<{ success: boolean; message: string }> {
+    return this.fetch<{ success: boolean; message: string }>('/settings/ollama/pull', {
+      method: 'POST',
+      body: JSON.stringify({ model: modelName }),
+    });
+  }
+
+  /**
    * Health check
    */
   async healthCheck(): Promise<{ status: string; service: string; timestamp: string }> {
