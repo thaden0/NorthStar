@@ -152,7 +152,7 @@ export class SettingsController implements OnModuleInit {
   }
 
   @Post('ollama/pull')
-  @ApiOperation({ summary: 'Pull an Ollama model' })
+  @ApiOperation({ summary: 'Pull an Ollama model (synchronous - waits for completion)' })
   @ApiBody({
     schema: {
       type: 'object',
@@ -167,7 +167,60 @@ export class SettingsController implements OnModuleInit {
     return { success: result.success, message: result.message };
   }
 
-  // ============ MCP Servers ============
+  @Post('ollama/pull-async')
+  @ApiOperation({ summary: 'Pull an Ollama model (async - returns immediately with jobId)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['model'],
+      properties: {
+        model: { type: 'string', description: 'Model name to pull' },
+      },
+    },
+  })
+  async pullOllamaModelAsync(@Body('model') model: string) {
+    const result = await this.settingsService.pullOllamaModelAsync(model);
+    return { success: true, jobId: result.jobId, message: 'Pull started' };
+  }
+
+  @Get('ollama/pull-status/:jobId')
+  @ApiOperation({ summary: 'Get status of an async model pull' })
+  @ApiParam({ name: 'jobId', type: 'string' })
+  async getPullJobStatus(@Param('jobId') jobId: string) {
+    const status = this.settingsService.getPullJobStatus(jobId);
+    return { success: true, ...status };
+  }
+
+  @Get('ollama/pull-jobs')
+  @ApiOperation({ summary: 'List all active pull jobs (debug endpoint)' })
+  async getActivePullJobs() {
+    const jobs = this.settingsService.getActivePullJobs();
+    return { success: true, data: jobs };
+  }
+
+  @Get('debug/health')
+  @ApiOperation({ summary: 'Debug endpoint - service health check' })
+  async debugHealth() {
+    try {
+      const models = await this.settingsService.listOllamaModels();
+      return {
+        success: true,
+        timestamp: new Date().toISOString(),
+        ollamaConnection: 'ok',
+        modelCount: models.length,
+        activeJobs: this.settingsService.getActivePullJobs().length,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        timestamp: new Date().toISOString(),
+        ollamaConnection: 'error',
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+
 
   @Get('mcp-servers')
   @ApiOperation({ summary: 'List all MCP servers' })

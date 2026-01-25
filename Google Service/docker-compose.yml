@@ -1,0 +1,50 @@
+services:
+  google-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${PORT:-3003}:3003"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/google_service
+      - JWT_SECRET=${JWT_SECRET:-northstar-agent-service-secret-key-2026}
+      - JWT_ISSUER=${JWT_ISSUER:-north-star}
+      - JWT_AUDIENCE=${JWT_AUDIENCE:-google-service}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:-http://localhost:3000/api/google/callback}
+      - GOOGLE_SCOPES=${GOOGLE_SCOPES}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - NODE_ENV=production
+      - PORT=3003
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - google-network
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=google_service
+    volumes:
+      - google_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${DB_PORT:-5438}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - google-network
+
+volumes:
+  google_postgres_data:
+
+networks:
+  google-network:
+    driver: bridge

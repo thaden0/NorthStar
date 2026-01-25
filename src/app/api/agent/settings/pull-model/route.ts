@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { model } = body;
+    const { model, async: useAsync } = body;
 
     if (!model || typeof model !== 'string') {
       return NextResponse.json(
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate model name format (basic check)
-    const modelNamePattern = /^[a-zA-Z0-9_\-.:]+$/;
+    const modelNamePattern = /^[a-zA-Z0-9_\-./]+$/;
     if (!modelNamePattern.test(model)) {
       return NextResponse.json(
         { success: false, error: 'Invalid model name format' },
@@ -33,13 +33,30 @@ export async function POST(request: NextRequest) {
     }
 
     const client = createAgentClient(session.userId, session.user.email, session.user.name);
+    
+    // Use async pull by default to avoid timeout issues
+    if (useAsync !== false) {
+      const result = await client.pullModelAsync(model);
+      return NextResponse.json({
+        success: true,
+        jobId: result.jobId,
+        message: `Pull started for ${model}. Use the jobId to check status.`,
+        async: true,
+      });
+    }
+    
+    // Synchronous pull (may timeout for large models)
     const result = await client.pullModel(model);
-
     return NextResponse.json(result);
+    
   } catch (error) {
     console.error('Failed to pull model:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to pull model. It may take a while for large models.' },
+      { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Failed to pull model',
+        hint: 'Large models may timeout. Try using async: true for background pulls.'
+      },
       { status: 500 }
     );
   }

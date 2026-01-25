@@ -273,13 +273,56 @@ export class AgentServiceClient {
   }
 
   /**
-   * Pull a new model from Ollama registry
+   * Pull a new model from Ollama registry (sync - waits for completion)
+   * Warning: Can timeout for large models
    */
   async pullModel(modelName: string): Promise<{ success: boolean; message: string }> {
     return this.fetch<{ success: boolean; message: string }>('/settings/ollama/pull', {
       method: 'POST',
       body: JSON.stringify({ model: modelName }),
     });
+  }
+
+  /**
+   * Pull a new model asynchronously (returns immediately with jobId)
+   */
+  async pullModelAsync(modelName: string): Promise<{ success: boolean; jobId: string; message: string }> {
+    return this.fetch<{ success: boolean; jobId: string; message: string }>('/settings/ollama/pull-async', {
+      method: 'POST',
+      body: JSON.stringify({ model: modelName }),
+    });
+  }
+
+  /**
+   * Get status of an async pull job
+   */
+  async getPullJobStatus(jobId: string): Promise<{ 
+    success: boolean;
+    status: 'pulling' | 'success' | 'error' | 'not_found';
+    progress?: number;
+    message?: string;
+  }> {
+    return this.fetch(`/settings/ollama/pull-status/${encodeURIComponent(jobId)}`);
+  }
+
+  /**
+   * Get all active pull jobs
+   */
+  async getActivePullJobs(): Promise<Array<{ 
+    jobId: string;
+    status: string;
+    progress?: number;
+    message?: string;
+  }>> {
+    const result = await this.fetch<{ data: Array<{ jobId: string; status: string; progress?: number; message?: string }> }>('/settings/ollama/pull-jobs');
+    return result.data || result;
+  }
+
+  /**
+   * Debug health check
+   */
+  async debugHealth(): Promise<{ success: boolean; ollamaConnection: string; modelCount?: number; error?: string }> {
+    return this.fetch('/settings/debug/health');
   }
 
   /**

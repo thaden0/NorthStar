@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { 
   FiSend, 
   FiPlus, 
@@ -105,7 +107,55 @@ function ThinkingBlock({ content }: { content: string }) {
   );
 }
 
-// Function to parse message content and render thinking blocks
+// Component to render markdown content with proper styling
+function MarkdownContent({ content }: { content: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        // Style headers
+        h1: ({ children }) => <h1 className={styles.mdH1}>{children}</h1>,
+        h2: ({ children }) => <h2 className={styles.mdH2}>{children}</h2>,
+        h3: ({ children }) => <h3 className={styles.mdH3}>{children}</h3>,
+        h4: ({ children }) => <h4 className={styles.mdH4}>{children}</h4>,
+        // Style paragraphs
+        p: ({ children }) => <p className={styles.mdP}>{children}</p>,
+        // Style lists
+        ul: ({ children }) => <ul className={styles.mdUl}>{children}</ul>,
+        ol: ({ children }) => <ol className={styles.mdOl}>{children}</ol>,
+        li: ({ children }) => <li className={styles.mdLi}>{children}</li>,
+        // Style links
+        a: ({ href, children }) => (
+          <a href={href} target="_blank" rel="noopener noreferrer" className={styles.mdLink}>
+            {children}
+          </a>
+        ),
+        // Style code
+        code: ({ className, children, ...props }) => {
+          const isInline = !className;
+          return isInline ? (
+            <code className={styles.mdInlineCode} {...props}>{children}</code>
+          ) : (
+            <code className={`${styles.mdCodeBlock} ${className || ''}`} {...props}>{children}</code>
+          );
+        },
+        pre: ({ children }) => <pre className={styles.mdPre}>{children}</pre>,
+        // Style blockquotes
+        blockquote: ({ children }) => <blockquote className={styles.mdBlockquote}>{children}</blockquote>,
+        // Style horizontal rules
+        hr: () => <hr className={styles.mdHr} />,
+        // Style strong/bold
+        strong: ({ children }) => <strong className={styles.mdStrong}>{children}</strong>,
+        // Style emphasis/italic
+        em: ({ children }) => <em className={styles.mdEm}>{children}</em>,
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+}
+
+// Function to parse message content and render thinking blocks with markdown
 function renderMessageContent(content: string): React.ReactNode {
   // Match <think>...</think> blocks (case insensitive, handles multiline)
   const thinkRegex = /<think>([\s\S]*?)<\/think>/gi;
@@ -115,11 +165,11 @@ function renderMessageContent(content: string): React.ReactNode {
   let partKey = 0;
   
   while ((match = thinkRegex.exec(content)) !== null) {
-    // Add text before the think block
+    // Add text before the think block (rendered as markdown)
     if (match.index > lastIndex) {
       const textBefore = content.slice(lastIndex, match.index).trim();
       if (textBefore) {
-        parts.push(<span key={partKey++}>{textBefore}</span>);
+        parts.push(<MarkdownContent key={partKey++} content={textBefore} />);
       }
     }
     
@@ -132,17 +182,17 @@ function renderMessageContent(content: string): React.ReactNode {
     lastIndex = match.index + match[0].length;
   }
   
-  // Add remaining text after the last think block
+  // Add remaining text after the last think block (rendered as markdown)
   if (lastIndex < content.length) {
     const remainingText = content.slice(lastIndex).trim();
     if (remainingText) {
-      parts.push(<span key={partKey++}>{remainingText}</span>);
+      parts.push(<MarkdownContent key={partKey++} content={remainingText} />);
     }
   }
   
-  // If no think blocks found, return original content
+  // If no think blocks found, render entire content as markdown
   if (parts.length === 0) {
-    return content;
+    return <MarkdownContent content={content} />;
   }
   
   return <>{parts}</>;
@@ -280,7 +330,7 @@ export default function ChatClient({ userId, userName, userEmail: _userEmail }: 
       }
 
       const data = await response.json();
-      const { conversationId, clientToken, agentServiceUrl } = data;
+      const { conversationId } = data;
 
       // Set current conversation
       if (!currentConversation) {
@@ -296,16 +346,17 @@ export default function ChatClient({ userId, userName, userEmail: _userEmail }: 
         setConversations(prev => [newConvo, ...prev]);
       }
 
-      // Connect to SSE stream
-      const streamUrl = `${agentServiceUrl}/chat/${conversationId}/stream`;
+      // Connect to SSE stream through Next.js proxy (not directly to Agent Service)
+      // The browser should never talk directly to internal microservices
+      const streamUrl = `/api/agent/chat/${conversationId}/stream`;
       
       // Close any existing connection
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
       }
 
-      // Create EventSource with token in query param
-      const eventSource = new EventSource(`${streamUrl}?token=${encodeURIComponent(clientToken)}`);
+      // Create EventSource - no token needed, Next.js handles auth via session cookies
+      const eventSource = new EventSource(streamUrl);
       eventSourceRef.current = eventSource;
 
       let assistantContent = '';

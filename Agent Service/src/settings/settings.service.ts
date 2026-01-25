@@ -222,6 +222,37 @@ export class SettingsService {
     }
   }
 
+  /**
+   * Start an async model pull (returns immediately with jobId)
+   */
+  async pullOllamaModelAsync(modelName: string): Promise<{ jobId: string }> {
+    return this.ollamaService.pullModelAsync(modelName);
+  }
+
+  /**
+   * Get status of a pull job
+   */
+  getPullJobStatus(jobId: string): { 
+    status: 'pulling' | 'success' | 'error' | 'not_found';
+    progress?: number;
+    message?: string;
+  } {
+    return this.ollamaService.getPullJobStatus(jobId);
+  }
+
+  /**
+   * Get all active pull jobs
+   */
+  getActivePullJobs(): Array<{ 
+    jobId: string;
+    status: string;
+    progress?: number;
+    message?: string;
+  }> {
+    return this.ollamaService.getActivePullJobs();
+  }
+
+
   // ============ MCP Server CRUD ============
 
   async getAllMcpServers(): Promise<McpServer[]> {

@@ -516,6 +516,7 @@ export class AgentService {
   }
 
   private emitEvent(emitter: EventEmitter, event: SSEEvent) {
+    this.logger.debug(`Emitting event: ${event.type} - listeners: ${emitter.listenerCount('event')}`);
     emitter.emit('event', event);
   }
 

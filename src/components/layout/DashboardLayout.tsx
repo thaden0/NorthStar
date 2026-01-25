@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Sidebar from './Sidebar';
 import Header from './Header';
+import { TrinketContainer } from '@/components/trinkets';
 import styles from './DashboardLayout.module.css';
 
 interface DashboardLayoutProps {
@@ -20,6 +21,9 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
 
   return (
     <div className={styles.layout}>
+      {/* Trinket notifications - slide down from top */}
+      <TrinketContainer />
+      
       <Sidebar 
         user={user} 
         isOpen={isSidebarOpen} 
@@ -36,3 +40,4 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
     </div>
   );
 }
+

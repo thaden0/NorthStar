@@ -138,10 +138,12 @@ export class AgentController {
 
     // Event handler
     const eventHandler = (event: SSEEvent) => {
+      this.logger.debug(`SSE writing event: ${event.type}`);
       res.write(`data: ${JSON.stringify(event)}\n\n`);
 
       // Clean up on completion or error
       if (event.type === 'complete' || event.type === 'error') {
+        this.logger.log(`SSE stream complete for: ${conversationId}`);
         clearInterval(heartbeatInterval);
         emitter.removeListener('event', eventHandler);
         this.agentService.removeEventEmitter(conversationId);

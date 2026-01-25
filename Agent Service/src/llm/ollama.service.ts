@@ -68,6 +68,19 @@ export class OllamaService {
     }
   }
 
+  // Track ongoing pull operations
+  private pullJobs = new Map<string, { 
+    status: 'pulling' | 'success' | 'error';
+    progress?: number;
+    message?: string;
+    startedAt: Date;
+    completedAt?: Date;
+  }>();
+
+  /**
+   * Pull a model synchronously (waits for completion)
+   * Warning: This can take several minutes for large models
+   */
   async pullModel(modelName: string): Promise<void> {
     try {
       this.logger.log(`Pulling model: ${modelName}`);
@@ -81,12 +94,27 @@ export class OllamaService {
         throw new Error(`Failed to pull model: ${response.statusText}`);
       }
 
-      // Stream the response to completion
+      // Stream the response to completion, tracking progress
       const reader = response.body?.getReader();
       if (reader) {
+        const decoder = new TextDecoder();
         while (true) {
-          const { done } = await reader.read();
+          const { done, value } = await reader.read();
           if (done) break;
+          
+          // Parse progress from Ollama's NDJSON response
+          const text = decoder.decode(value, { stream: true });
+          const lines = text.split('\n').filter(line => line.trim());
+          for (const line of lines) {
+            try {
+              const data = JSON.parse(line);
+              if (data.status) {
+                this.logger.debug(`Pull progress for ${modelName}: ${data.status}`);
+              }
+            } catch {
+              // Ignore parse errors for partial lines
+            }
+          }
         }
       }
 
@@ -96,6 +124,139 @@ export class OllamaService {
       throw error;
     }
   }
+
+  /**
+   * Pull a model asynchronously (returns immediately with job ID)
+   * Use getPullJobStatus to check progress
+   */
+  async pullModelAsync(modelName: string): Promise<{ jobId: string }> {
+    const jobId = `pull-${modelName}-${Date.now()}`;
+    
+    this.pullJobs.set(jobId, {
+      status: 'pulling',
+      startedAt: new Date(),
+      message: `Starting pull for ${modelName}...`,
+    });
+
+    // Start pull in background
+    this.pullModelBackground(jobId, modelName);
+
+    return { jobId };
+  }
+
+  private async pullModelBackground(jobId: string, modelName: string): Promise<void> {
+    try {
+      this.logger.log(`[${jobId}] Starting background pull for: ${modelName}`);
+      
+      const response = await fetch(`${this.baseUrl}/api/pull`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: modelName, stream: true }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to pull model: ${response.statusText}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (reader) {
+        const decoder = new TextDecoder();
+        let lastProgress = 0;
+        
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          const text = decoder.decode(value, { stream: true });
+          const lines = text.split('\n').filter(line => line.trim());
+          
+          for (const line of lines) {
+            try {
+              const data = JSON.parse(line);
+              
+              // Calculate progress percentage
+              if (data.completed && data.total) {
+                lastProgress = Math.round((data.completed / data.total) * 100);
+              }
+              
+              this.pullJobs.set(jobId, {
+                status: 'pulling',
+                progress: lastProgress,
+                message: data.status || `Downloading ${modelName}...`,
+                startedAt: this.pullJobs.get(jobId)?.startedAt || new Date(),
+              });
+              
+            } catch {
+              // Ignore parse errors
+            }
+          }
+        }
+      }
+
+      this.pullJobs.set(jobId, {
+        status: 'success',
+        progress: 100,
+        message: `Model ${modelName} pulled successfully`,
+        startedAt: this.pullJobs.get(jobId)?.startedAt || new Date(),
+        completedAt: new Date(),
+      });
+      
+      this.logger.log(`[${jobId}] Model ${modelName} pulled successfully`);
+      
+      // Clean up job after 5 minutes
+      setTimeout(() => this.pullJobs.delete(jobId), 5 * 60 * 1000);
+      
+    } catch (error) {
+      this.logger.error(`[${jobId}] Error pulling model ${modelName}: ${error}`);
+      
+      this.pullJobs.set(jobId, {
+        status: 'error',
+        message: error instanceof Error ? error.message : String(error),
+        startedAt: this.pullJobs.get(jobId)?.startedAt || new Date(),
+        completedAt: new Date(),
+      });
+      
+      // Clean up job after 5 minutes
+      setTimeout(() => this.pullJobs.delete(jobId), 5 * 60 * 1000);
+    }
+  }
+
+  /**
+   * Get the status of a pull job
+   */
+  getPullJobStatus(jobId: string): { 
+    status: 'pulling' | 'success' | 'error' | 'not_found';
+    progress?: number;
+    message?: string;
+  } {
+    const job = this.pullJobs.get(jobId);
+    if (!job) {
+      return { status: 'not_found', message: 'Job not found' };
+    }
+    return {
+      status: job.status,
+      progress: job.progress,
+      message: job.message,
+    };
+  }
+
+  /**
+   * Get all active pull jobs
+   */
+  getActivePullJobs(): Array<{ 
+    jobId: string;
+    status: string;
+    progress?: number;
+    message?: string;
+  }> {
+    return Array.from(this.pullJobs.entries()).map(([jobId, job]) => ({
+      jobId,
+      status: job.status,
+      progress: job.progress,
+      message: job.message,
+    }));
+  }
+
 
   getModel(modelName?: string) {
     return this.ollama(modelName || this.defaultModel);

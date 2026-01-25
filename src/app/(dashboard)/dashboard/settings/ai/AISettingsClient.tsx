@@ -67,9 +67,10 @@ export default function AISettingsClient({
     }
 
     setIsPulling(true);
-    toast.info(`Pulling model ${pullModelName}... This may take several minutes for large models.`);
+    const toastId = toast.loading(`Starting download for ${pullModelName}...`);
 
     try {
+      // Start async pull
       const res = await fetch('/api/agent/settings/pull-model', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -78,20 +79,69 @@ export default function AISettingsClient({
       
       const result = await res.json();
       
-      if (result.success) {
-        toast.success(result.message || `Model ${pullModelName} pulled successfully!`);
-        setPullModelName('');
-        // Refresh the page to show new model
-        router.refresh();
-      } else {
-        toast.error(result.error || result.message || 'Failed to pull model');
+      if (!result.success) {
+        toast.error(result.error || result.message || 'Failed to start model pull', { id: toastId });
+        setIsPulling(false);
+        return;
       }
-    } catch {
-      toast.error('Failed to pull model. Check if the model name is correct.');
-    } finally {
+
+      // If async pull, poll for status
+      if (result.jobId) {
+        const jobId = result.jobId;
+        let attempts = 0;
+        const maxAttempts = 600; // 10 minutes max (1 second intervals)
+
+        const pollStatus = async () => {
+          try {
+            const statusRes = await fetch(`/api/agent/settings/pull-status/${encodeURIComponent(jobId)}`);
+            const status = await statusRes.json();
+
+            if (status.status === 'pulling') {
+              const progress = status.progress || 0;
+              toast.loading(`Downloading ${pullModelName}... ${progress}%`, { id: toastId });
+              
+              attempts++;
+              if (attempts < maxAttempts) {
+                setTimeout(pollStatus, 1000);
+              } else {
+                toast.error('Pull timed out. Check the server logs.', { id: toastId });
+                setIsPulling(false);
+              }
+            } else if (status.status === 'success') {
+              toast.success(`Model ${pullModelName} downloaded successfully!`, { id: toastId });
+              setPullModelName('');
+              router.refresh();
+              setIsPulling(false);
+            } else if (status.status === 'error') {
+              toast.error(status.message || 'Failed to pull model', { id: toastId });
+              setIsPulling(false);
+            } else {
+              toast.error('Unknown status: ' + status.status, { id: toastId });
+              setIsPulling(false);
+            }
+          } catch (error) {
+            console.error('Error polling status:', error);
+            toast.error('Error checking download status', { id: toastId });
+            setIsPulling(false);
+          }
+        };
+
+        // Start polling
+        setTimeout(pollStatus, 1000);
+      } else {
+        // Synchronous response (model already existed or quick pull)
+        toast.success(result.message || `Model ${pullModelName} pulled successfully!`, { id: toastId });
+        setPullModelName('');
+        router.refresh();
+        setIsPulling(false);
+      }
+    } catch (error) {
+      console.error('Pull error:', error);
+      toast.error('Failed to pull model. Check if the model name is correct.', { id: toastId });
       setIsPulling(false);
     }
   };
+
 
   const getStatsForModel = (modelName: string): ModelStats | undefined => {
     return modelStats.find(s => s.modelName === modelName);

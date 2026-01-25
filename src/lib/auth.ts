@@ -199,3 +199,41 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
   const session = await getSession();
   return session?.user ?? null;
 }
+
+// ==================== SERVICE TOKEN GENERATION ====================
+/**
+ * Generate a JWT token for inter-service communication
+ * This token is used to call Agent Service, Google Service, etc.
+ */
+export async function generateServiceToken(userId: string, email?: string): Promise<string> {
+  // Use the same JWT configuration as the services
+  const secret = process.env.JWT_SECRET || 'northstar-agent-service-secret-key-2026';
+  const issuer = process.env.JWT_ISSUER || 'north-star';
+  const audience = process.env.JWT_AUDIENCE || 'google-service';
+
+  // Create a simple JWT manually (or use jose library)
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const now = Math.floor(Date.now() / 1000);
+  const payload = {
+    sub: userId,
+    email: email,
+    iat: now,
+    exp: now + 3600, // 1 hour expiry
+    iss: issuer,
+    aud: audience,
+  };
+
+  const base64Header = Buffer.from(JSON.stringify(header)).toString('base64url');
+  const base64Payload = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const signingInput = `${base64Header}.${base64Payload}`;
+
+  // Use crypto for HMAC-SHA256 signature
+  const crypto = await import('crypto');
+  const signature = crypto
+    .createHmac('sha256', secret)
+    .update(signingInput)
+    .digest('base64url');
+
+  return `${signingInput}.${signature}`;
+}
+
