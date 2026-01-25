@@ -64,6 +64,66 @@ type Skill = {
   order: number;
 };
 
+type Education = {
+  id: string;
+  degree: string;
+  institution: string;
+  startYear: string;
+  endYear: string | null;
+  description: string | null;
+  order: number;
+};
+
+type Experience = {
+  id: string;
+  title: string;
+  company: string;
+  location: string;
+  startDate: string;
+  endDate: string | null;
+  highlights: string[];
+  order: number;
+};
+
+type Service = {
+  id: string;
+  title: string;
+  description: string;
+  order: number;
+};
+
+type Project = {
+  id: string;
+  title: string;
+  description: string;
+  image: string | null;
+  liveUrl: string | null;
+  sourceUrl: string | null;
+  technologies: string[];
+  featured: boolean;
+  order: number;
+};
+
+type FAQ = {
+  id: string;
+  question: string;
+  answer: string;
+  order: number;
+};
+
+type PortfolioSettings = {
+  id: string;
+  name: string;
+  email: string;
+  heroTitle: string;
+  heroSubtitle: string;
+  profile: string;
+  location: string;
+  linkedIn: string | null;
+  aboutText: string;
+  resumeSummary: string;
+} | null;
+
 async function getPortfolioData() {
   const [settings, skills, education, experiences, services, projects, faqs] = await Promise.all([
     db.portfolioSettings.findFirst(),
@@ -75,7 +135,15 @@ async function getPortfolioData() {
     db.fAQ.findMany({ orderBy: { order: 'asc' } }),
   ]);
 
-  return { settings, skills: skills as Skill[], education, experiences, services, projects, faqs };
+  return {
+    settings: settings as PortfolioSettings,
+    skills: skills as Skill[],
+    education: education as Education[],
+    experiences: experiences as Experience[],
+    services: services as Service[],
+    projects: projects as Project[],
+    faqs: faqs as FAQ[],
+  };
 }
 
 export default async function HomePage() {
