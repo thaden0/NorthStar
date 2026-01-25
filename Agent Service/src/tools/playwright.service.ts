@@ -45,6 +45,7 @@ export class PlaywrightService implements OnModuleInit, OnModuleDestroy {
       this.logger.log('Initializing Playwright browser...');
       this.browser = await chromium.launch({
         headless: this.headless,
+        executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
         args: ['--no-sandbox', '--disable-setuid-sandbox'],
       });
       this.logger.log('Playwright browser initialized');
