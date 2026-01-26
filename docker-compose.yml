@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "80:3000"
+      - "3000:3000"
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/northstar?schema=public
       - AUTH_SECRET=${AUTH_SECRET}
