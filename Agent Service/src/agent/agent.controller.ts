@@ -9,6 +9,7 @@ import {
   HttpException,
   HttpStatus,
   Logger,
+  Headers,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiBody, ApiParam } from '@nestjs/swagger';
@@ -63,14 +64,21 @@ export class AgentController {
       },
     },
   })
-  async chat(@Body() body: ChatRequest, @CurrentUser() user: JwtPayload) {
+  async chat(
+    @Body() body: ChatRequest,
+    @CurrentUser() user: JwtPayload,
+    @Headers('authorization') authHeader?: string,
+  ) {
     try {
       // Validate request
       const validated = ChatRequestSchema.parse(body);
 
       this.logger.log(`Chat request from user ${validated.userId}`);
 
-      const { conversationId, emitter } = await this.agentService.processChat(validated);
+      // Extract token from header (remove "Bearer " prefix if present)
+      const token = authHeader?.replace(/^Bearer\s+/i, '') || '';
+
+      const { conversationId } = await this.agentService.processChat(validated, token);
 
       // If SSE endpoint is specified, client will connect there
       // Otherwise, return conversation ID for polling

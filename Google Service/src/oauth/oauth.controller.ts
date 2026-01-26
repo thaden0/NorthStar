@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Query, Req, Res, UseGuards, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Query, Req, Res, UseGuards, HttpStatus, Logger } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -7,6 +7,8 @@ import { OAuthService } from './oauth.service';
 @ApiTags('OAuth')
 @Controller('oauth')
 export class OAuthController {
+  private readonly logger = new Logger(OAuthController.name);
+  
   constructor(private oauthService: OAuthService) {}
 
   @Get('authorize')
@@ -30,16 +32,19 @@ export class OAuthController {
     @Query('error') error: string,
     @Res() res: Response,
   ) {
+    const frontendUrl = process.env.FRONTEND_URL || 'https://leonardwaugh.com';
+    
     // Handle errors from Google
     if (error) {
-      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard/settings/integrations?error=${encodeURIComponent(error)}`);
+      return res.redirect(`${frontendUrl}/dashboard/settings/profile?error=${encodeURIComponent(error)}`);
     }
 
     try {
       await this.oauthService.handleCallback(code, state);
-      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard/settings/integrations?success=google_connected`);
+      return res.redirect(`${frontendUrl}/dashboard/settings/profile?success=google_connected`);
     } catch (err: any) {
-      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard/settings/integrations?error=${encodeURIComponent(err.message)}`);
+      this.logger.error(`OAuth callback failed: ${err.message}`, err.stack);
+      return res.redirect(`${frontendUrl}/dashboard/settings/profile?error=${encodeURIComponent(err.message)}`);
     }
   }
 

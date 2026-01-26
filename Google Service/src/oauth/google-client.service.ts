@@ -79,10 +79,18 @@ export class GoogleClientService {
     expiresAt?: Date;
     scope?: string;
   }> {
+    this.logger.debug(`Exchanging authorization code for tokens...`);
     const { tokens } = await this.oauth2Client.getToken(code);
     
+    this.logger.debug(`Token exchange result - access_token exists: ${!!tokens.access_token}, refresh_token exists: ${!!tokens.refresh_token}, scope: ${tokens.scope}`);
+    
+    if (!tokens.access_token) {
+      this.logger.error('No access token received from Google!');
+      throw new Error('Failed to get access token from Google');
+    }
+    
     return {
-      accessToken: tokens.access_token!,
+      accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token || undefined,
       expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : undefined,
       scope: tokens.scope || undefined,
@@ -126,14 +134,27 @@ export class GoogleClientService {
     name?: string;
     picture?: string;
   }> {
-    const oauth2 = google.oauth2({ version: 'v2', auth: this.oauth2Client });
-    this.oauth2Client.setCredentials({ access_token: accessToken });
+    this.logger.debug(`Getting user info with access token (first 20 chars): ${accessToken.substring(0, 20)}...`);
     
-    const { data } = await oauth2.userinfo.get();
+    // Use direct fetch to avoid googleapis library issues
+    const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+      },
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      this.logger.error(`Failed to get user info: ${response.status} ${errorText}`);
+      throw new Error(`Failed to get user info: ${response.status} ${errorText}`);
+    }
+    
+    const data = await response.json();
+    this.logger.debug(`Got user info for: ${data.email}`);
     
     return {
-      id: data.id!,
-      email: data.email!,
+      id: data.id,
+      email: data.email,
       name: data.name || undefined,
       picture: data.picture || undefined,
     };

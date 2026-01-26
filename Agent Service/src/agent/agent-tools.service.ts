@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { z } from 'zod';
 import { PlaywrightService, BrowseResult } from '../tools/playwright.service';
 import { GoogleNewsService, NewsSearchResult, TopHeadlinesResult } from '../tools/google-news.service';
+import { GmailToolService } from '../tools/gmail-tool.service';
 import { tool } from 'ai';
 
 // Tool parameter schemas
@@ -39,6 +40,15 @@ const SendStatusParamsSchema = z.object({
   message: z.string().describe('Status message to send to the user (e.g., "Reading document...", "Analyzing data...")'),
 });
 
+// Gmail tool schemas
+const GetGmailMessagesParamsSchema = z.object({
+  maxResults: z.number().optional().describe('Maximum number of messages to retrieve (default: 10)'),
+});
+
+const SearchGmailParamsSchema = z.object({
+  query: z.string().describe('Gmail search query (e.g., "from:john@example.com", "is:unread", "subject:meeting")'),
+});
+
 export interface ToolResult {
   success: boolean;
   data?: unknown;
@@ -54,11 +64,19 @@ export class AgentToolsService {
   private readonly logger = new Logger(AgentToolsService.name);
   private statusCallback?: StatusCallback;
   private subtaskCallback?: SubtaskCallback;
+  private currentUserId?: string;
+  private currentToken?: string;
 
   constructor(
     private playwrightService: PlaywrightService,
     private googleNewsService: GoogleNewsService,
+    private gmailToolService: GmailToolService,
   ) {}
+
+  setUserContext(userId: string, token: string) {
+    this.currentUserId = userId;
+    this.currentToken = token;
+  }
 
   setStatusCallback(callback: StatusCallback) {
     this.statusCallback = callback;
@@ -190,6 +208,100 @@ export class AgentToolsService {
           return {
             success: true,
             summary: `Status sent: ${message}`,
+          };
+        },
+      }),
+
+      // Gmail tools
+      get_gmail_messages: tool({
+        description:
+          'Get the latest Gmail messages from the user\'s inbox. Use this to check emails, find recent messages, or see what\'s in the inbox.',
+        parameters: GetGmailMessagesParamsSchema,
+        execute: async ({ maxResults }) => {
+          if (!this.currentUserId || !this.currentToken) {
+            return {
+              success: false,
+              error: 'User context not set - Gmail access not available',
+              summary: 'Cannot access Gmail: no user context',
+            };
+          }
+          
+          this.sendStatus('Fetching your Gmail messages...');
+          const result = await this.gmailToolService.getMessages(
+            this.currentUserId,
+            this.currentToken,
+            { maxResults: maxResults || 10 }
+          );
+          
+          if (result.error) {
+            return {
+              success: false,
+              error: result.error,
+              summary: `Failed to fetch Gmail messages: ${result.error}`,
+            };
+          }
+          
+          return {
+            success: true,
+            data: {
+              messageCount: result.messages.length,
+              messages: result.messages.map(m => ({
+                id: m.id,
+                from: m.from,
+                subject: m.subject,
+                snippet: m.snippet,
+                date: m.date,
+                isUnread: m.isUnread,
+              })),
+            },
+            summary: `Found ${result.messages.length} Gmail messages`,
+          };
+        },
+      }),
+
+      search_gmail: tool({
+        description:
+          'Search Gmail for specific messages using Gmail search syntax. Examples: "from:john@example.com", "subject:meeting", "is:unread", "after:2024/01/01".',
+        parameters: SearchGmailParamsSchema,
+        execute: async ({ query }) => {
+          if (!this.currentUserId || !this.currentToken) {
+            return {
+              success: false,
+              error: 'User context not set - Gmail access not available',
+              summary: 'Cannot access Gmail: no user context',
+            };
+          }
+          
+          this.sendStatus(`Searching Gmail for: ${query}`);
+          const result = await this.gmailToolService.searchMessages(
+            this.currentUserId,
+            this.currentToken,
+            query
+          );
+          
+          if (result.error) {
+            return {
+              success: false,
+              error: result.error,
+              summary: `Failed to search Gmail: ${result.error}`,
+            };
+          }
+          
+          return {
+            success: true,
+            data: {
+              query,
+              messageCount: result.messages.length,
+              messages: result.messages.map(m => ({
+                id: m.id,
+                from: m.from,
+                subject: m.subject,
+                snippet: m.snippet,
+                date: m.date,
+                isUnread: m.isUnread,
+              })),
+            },
+            summary: `Found ${result.messages.length} Gmail messages matching "${query}"`,
           };
         },
       }),

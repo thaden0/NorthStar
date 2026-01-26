@@ -305,4 +305,105 @@ export class OllamaService {
       throw error;
     }
   }
+
+  /**
+   * Raw chat method using direct Ollama API (like TrackingAgent)
+   * Better compatibility with smaller models that struggle with structured tool calling
+   */
+  async rawChat(options: {
+    model?: string;
+    messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
+    temperature?: number;
+  }): Promise<{ content: string }> {
+    const modelName = options.model || this.defaultModel;
+    
+    try {
+      const response = await fetch(`${this.baseUrl}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: modelName,
+          messages: options.messages,
+          stream: false,
+          options: {
+            temperature: options.temperature ?? 0.7,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Ollama API error (${response.status}): ${text}`);
+      }
+
+      const data = await response.json() as { message: { content: string } };
+      return { content: data.message?.content || '' };
+    } catch (error) {
+      this.logger.error(`Error in rawChat: ${error}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Raw streaming chat using direct Ollama API
+   */
+  async *rawChatStream(options: {
+    model?: string;
+    messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
+    temperature?: number;
+  }): AsyncGenerator<{ content: string; done: boolean }, void, unknown> {
+    const modelName = options.model || this.defaultModel;
+    
+    try {
+      const response = await fetch(`${this.baseUrl}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: modelName,
+          messages: options.messages,
+          stream: true,
+          options: {
+            temperature: options.temperature ?? 0.7,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Ollama API error (${response.status}): ${text}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No response body');
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.trim()) {
+            try {
+              const parsed = JSON.parse(line) as { message?: { content?: string }; done?: boolean };
+              if (parsed.message?.content) {
+                yield { content: parsed.message.content, done: parsed.done || false };
+              }
+              if (parsed.done) return;
+            } catch {
+              // Skip invalid JSON lines
+            }
+          }
+        }
+      }
+    } catch (error) {
+      this.logger.error(`Error in rawChatStream: ${error}`);
+      throw error;
+    }
+  }
 }

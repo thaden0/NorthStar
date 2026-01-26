@@ -12,13 +12,13 @@ export async function GET(request: NextRequest) {
   // Handle errors from Google
   if (error) {
     return NextResponse.redirect(
-      `${FRONTEND_URL}/dashboard/settings/integrations?error=${encodeURIComponent(error)}`
+      `${FRONTEND_URL}/dashboard/settings/profile?error=${encodeURIComponent(error)}`
     );
   }
 
   if (!code || !state) {
     return NextResponse.redirect(
-      `${FRONTEND_URL}/dashboard/settings/integrations?error=${encodeURIComponent('Missing authorization code')}`
+      `${FRONTEND_URL}/dashboard/settings/profile?error=${encodeURIComponent('Missing authorization code')}`
     );
   }
 
@@ -36,11 +36,11 @@ export async function GET(request: NextRequest) {
     }
 
     // If no redirect, assume success
-    return NextResponse.redirect(`${FRONTEND_URL}/dashboard/settings/integrations?success=google_connected`);
+    return NextResponse.redirect(`${FRONTEND_URL}/dashboard/settings/profile?success=google_connected`);
   } catch (error) {
     console.error('Google callback error:', error);
     return NextResponse.redirect(
-      `${FRONTEND_URL}/dashboard/settings/integrations?error=${encodeURIComponent('Failed to complete authorization')}`
+      `${FRONTEND_URL}/dashboard/settings/profile?error=${encodeURIComponent('Failed to complete authorization')}`
     );
   }
 }

@@ -102,14 +102,6 @@ export default async function PortfolioPage() {
             Manage your portfolio content without touching code
           </p>
         </div>
-        <Link 
-          href="/" 
-          target="_blank"
-          className="btn-secondary" 
-          style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-        >
-          View Portfolio
-        </Link>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 'var(--space-5)' }}>
