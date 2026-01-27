@@ -155,6 +155,73 @@ export const agentExecutionsRelations = relations(
   }),
 );
 
+// Cron Jobs table - scheduled tasks
+export const cronJobs = pgTable('cron_jobs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  description: text('description'),
+  prompt: text('prompt').notNull(),
+  
+  // Schedule Configuration
+  scheduleType: text('schedule_type').notNull(), // 'cron' | 'once' | 'recurring'
+  cronExpression: text('cron_expression'), // For cron type: "0 9 * * 5"
+  scheduledAt: timestamp('scheduled_at'), // For 'once' type
+  recurringPattern: text('recurring_pattern'), // 'daily', 'weekly', 'monthly', etc.
+  recurringDay: integer('recurring_day'), // Day of week (0-6) or day of month (1-31)
+  recurringTime: text('recurring_time'), // Time in HH:MM format
+  timezone: text('timezone').default('UTC'),
+  
+  // Status
+  enabled: boolean('enabled').default(true),
+  lastRunAt: timestamp('last_run_at'),
+  nextRunAt: timestamp('next_run_at'),
+  runCount: integer('run_count').default(0),
+  
+  // Metadata
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Job Executions table - execution history
+export const jobExecutions = pgTable('job_executions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  jobId: uuid('job_id')
+    .notNull()
+    .references(() => cronJobs.id, { onDelete: 'cascade' }),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  startedAt: timestamp('started_at').defaultNow().notNull(),
+  completedAt: timestamp('completed_at'),
+  status: text('status').notNull().default('running'), // 'running', 'completed', 'failed'
+  result: text('result'),
+  error: text('error'),
+  executionTimeMs: integer('execution_time_ms'),
+});
+
+// Cron Jobs Relations
+export const cronJobsRelations = relations(cronJobs, ({ one, many }) => ({
+  user: one(users, {
+    fields: [cronJobs.userId],
+    references: [users.id],
+  }),
+  executions: many(jobExecutions),
+}));
+
+export const jobExecutionsRelations = relations(jobExecutions, ({ one }) => ({
+  job: one(cronJobs, {
+    fields: [jobExecutions.jobId],
+    references: [cronJobs.id],
+  }),
+  user: one(users, {
+    fields: [jobExecutions.userId],
+    references: [users.id],
+  }),
+}));
+
 // Type exports
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -170,3 +237,7 @@ export type McpServer = typeof mcpServers.$inferSelect;
 export type NewMcpServer = typeof mcpServers.$inferInsert;
 export type ModelAnalytic = typeof modelAnalytics.$inferSelect;
 export type NewModelAnalytic = typeof modelAnalytics.$inferInsert;
+export type CronJob = typeof cronJobs.$inferSelect;
+export type NewCronJob = typeof cronJobs.$inferInsert;
+export type JobExecution = typeof jobExecutions.$inferSelect;
+export type NewJobExecution = typeof jobExecutions.$inferInsert;

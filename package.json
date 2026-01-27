@@ -41,6 +41,7 @@
     "@trpc/react-query": "^11.8.1",
     "@trpc/server": "^11.8.1",
     "bcryptjs": "^3.0.3",
+    "date-fns": "^4.1.0",
     "dotenv": "^17.2.3",
     "framer-motion": "^12.29.0",
     "jose": "^6.1.3",

@@ -8,6 +8,8 @@ import { ConversationsModule } from './conversations/conversations.module';
 import { SettingsModule } from './settings/settings.module';
 import { ToolsModule } from './tools/tools.module';
 import { LlmModule } from './llm/llm.module';
+import { CronModule } from './cron/cron.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -24,7 +26,10 @@ import { HealthController } from './health.controller';
     SettingsModule,
     ToolsModule,
     LlmModule,
+    CronModule,
+    NotificationsModule,
   ],
   controllers: [HealthController],
 })
 export class AppModule {}
+

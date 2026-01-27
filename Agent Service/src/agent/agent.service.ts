@@ -404,6 +404,62 @@ export class AgentService {
     }
   }
 
+  /**
+   * Create a new conversation (for scheduled tasks)
+   */
+  async createConversation(userId: string, title: string): Promise<{ id: string }> {
+    await this.ensureUserExists(userId);
+    const db = this.databaseService.getDb();
+    
+    const [conversation] = await db
+      .insert(conversations)
+      .values({
+        userId,
+        title,
+        status: 'active',
+      })
+      .returning();
+    
+    return { id: conversation.id };
+  }
+
+  /**
+   * Run agent with a prompt synchronously (for scheduled tasks)
+   * Returns the result directly instead of streaming
+   */
+  async runAgentTask(
+    conversationId: string,
+    prompt: string,
+    userId: string,
+  ): Promise<{ response: string; conversationId: string }> {
+    const db = this.databaseService.getDb();
+    const emitter = new EventEmitter();
+    
+    // Store user message
+    await db.insert(messages).values({
+      conversationId,
+      role: 'user',
+      content: prompt,
+    });
+
+    // Run agent and wait for completion
+    const result = await this.runAgent(
+      {
+        conversationId,
+        userId,
+        isSubAgent: false,
+        maxIterations: 10,
+      },
+      prompt,
+      emitter,
+    );
+
+    return {
+      response: result,
+      conversationId,
+    };
+  }
+
   private async ensureUserExists(userId: string): Promise<void> {
     const db = this.databaseService.getDb();
     const existing = await db

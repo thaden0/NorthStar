@@ -3,8 +3,9 @@
 import Link from 'next/link';
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiMenu, FiUser, FiSettings, FiLogOut, FiBell } from 'react-icons/fi';
+import { FiMenu, FiUser, FiSettings, FiLogOut } from 'react-icons/fi';
 import { logoutAction } from '@/server/auth/actions';
+import { NotificationCenter } from '@/components/notifications';
 import styles from './Header.module.css';
 
 interface HeaderProps {
@@ -65,10 +66,7 @@ export default function Header({ user, onMenuClick, isDashboard = false }: Heade
         {user ? (
           <>
             {/* Notifications */}
-            <button className={styles.iconBtn} aria-label="Notifications">
-              <FiBell />
-              <span className={styles.notificationDot} />
-            </button>
+            <NotificationCenter />
 
             {/* User dropdown */}
             <div className={styles.userDropdown} ref={dropdownRef}>

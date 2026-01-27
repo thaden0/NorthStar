@@ -13,7 +13,8 @@ import {
   FiFileText,
   FiLogOut,
   FiChevronRight,
-  FiSliders
+  FiSliders,
+  FiClock
 } from 'react-icons/fi';
 import { logoutAction } from '@/server/auth/actions';
 import type { NavItem, RoleName } from '@/types';
@@ -34,6 +35,7 @@ const navItems: NavItem[] = [
   { label: 'Dashboard', href: '/dashboard', icon: 'FiHome' },
   { label: 'AI Insights', href: '/dashboard/ai-insights', icon: 'FiCpu' },
   { label: 'Files', href: '/dashboard/files', icon: 'FiFolder' },
+  { label: 'Scheduled Tasks', href: '/dashboard/settings/scheduled-tasks', icon: 'FiClock' },
   { label: 'Users', href: '/dashboard/users', icon: 'FiUsers', roles: ['Super Admin'] },
   { label: 'Portfolio', href: '/dashboard/portfolio', icon: 'FiBriefcase', roles: ['Super Admin'] },
   { label: 'Site Settings', href: '/dashboard/settings', icon: 'FiSettings', roles: ['Super Admin'] },
@@ -50,6 +52,7 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   FiSettings,
   FiFileText,
   FiSliders,
+  FiClock,
 };
 
 export default function Sidebar({ user, isOpen, onClose }: SidebarProps) {
