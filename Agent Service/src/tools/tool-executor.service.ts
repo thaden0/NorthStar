@@ -1,7 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { PlaywrightService } from './playwright.service';
 import { GoogleNewsService } from './google-news.service';
 import { GmailToolService } from './gmail-tool.service';
+import { CronJobsService } from '../cron/cron-jobs.service';
 import { ParsedToolCall } from './tool-parser.service';
 
 /**
@@ -52,6 +53,8 @@ export class ToolExecutorService {
     private playwrightService: PlaywrightService,
     private googleNewsService: GoogleNewsService,
     private gmailToolService: GmailToolService,
+    @Inject(forwardRef(() => CronJobsService))
+    private cronJobsService: CronJobsService,
   ) {
     this.registerDefaultTools();
   }
@@ -300,6 +303,54 @@ export class ToolExecutorService {
           },
           summary: `Found ${result.messages.length} matching emails`,
         };
+      },
+    });
+
+    // Schedule task tool
+    this.registerTool({
+      name: 'schedule_task',
+      description: 'Schedule a task to run at a specific time or on a recurring schedule. Use this when the user wants something done at a future time (e.g., "remind me tomorrow", "every Friday at 9am", "at 5pm today", "tell me X at Y time").',
+      parameters: {
+        name: { type: 'string', description: 'Short name for the scheduled task', required: true },
+        prompt: { type: 'string', description: 'The full prompt/task to execute at the scheduled time', required: true },
+        scheduleType: { type: 'string', description: '"once" for one-time tasks, "recurring" for repeating', required: true },
+        scheduledAt: { type: 'string', description: 'For one-time: ISO datetime (e.g., "2026-01-27T23:25:00")' },
+        recurringPattern: { type: 'string', description: 'For recurring: daily, weekly, biweekly, monthly, weekdays, weekends' },
+        recurringDay: { type: 'number', description: 'For weekly: day 0-6 (0=Sun, 5=Fri). For monthly: day 1-31' },
+        recurringTime: { type: 'string', description: 'Time in HH:MM format (e.g., "09:00", "23:25")' },
+      },
+      execute: async (args, context) => {
+        context.onStatus?.('Scheduling task...');
+        
+        try {
+          const job = await this.cronJobsService.create(context.userId, {
+            name: args.name as string,
+            prompt: args.prompt as string,
+            scheduleType: args.scheduleType as 'once' | 'recurring' | 'cron',
+            scheduledAt: args.scheduledAt as string,
+            recurringPattern: args.recurringPattern as string,
+            recurringDay: args.recurringDay as number,
+            recurringTime: args.recurringTime as string,
+            timezone: 'America/New_York',
+            enabled: true,
+          });
+
+          const scheduleDesc = args.scheduleType === 'once' 
+            ? `at ${args.scheduledAt}` 
+            : `${args.recurringPattern} at ${args.recurringTime}`;
+
+          return {
+            success: true,
+            data: { jobId: job.id, name: job.name, nextRunAt: job.nextRunAt },
+            summary: `Scheduled "${job.name}" to run ${scheduleDesc}`,
+          };
+        } catch (error) {
+          return {
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+            summary: `Failed to schedule task`,
+          };
+        }
       },
     });
 
