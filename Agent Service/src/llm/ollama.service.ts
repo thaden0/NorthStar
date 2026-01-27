@@ -345,6 +345,83 @@ export class OllamaService {
   }
 
   /**
+   * Chat with native tool calling support
+   * Uses Ollama's /api/chat with tools parameter for proper function calling
+   */
+  async chatWithTools(options: {
+    model?: string;
+    messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
+    tools: Array<{
+      type: 'function';
+      function: {
+        name: string;
+        description: string;
+        parameters: {
+          type: 'object';
+          properties: Record<string, { type: string; description: string; enum?: string[] }>;
+          required?: string[];
+        };
+      };
+    }>;
+    temperature?: number;
+  }): Promise<{
+    content: string;
+    toolCalls?: Array<{
+      name: string;
+      arguments: Record<string, unknown>;
+    }>;
+  }> {
+    const modelName = options.model || this.defaultModel;
+    
+    try {
+      const response = await fetch(`${this.baseUrl}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: modelName,
+          messages: options.messages,
+          tools: options.tools,
+          stream: false,
+          options: {
+            temperature: options.temperature ?? 0.7,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Ollama API error (${response.status}): ${text}`);
+      }
+
+      const data = await response.json() as { 
+        message: { 
+          content: string;
+          tool_calls?: Array<{
+            function: {
+              name: string;
+              arguments: Record<string, unknown>;
+            };
+          }>;
+        };
+      };
+      
+      const toolCalls = data.message?.tool_calls?.map(tc => ({
+        name: tc.function.name,
+        arguments: tc.function.arguments,
+      }));
+
+      return { 
+        content: data.message?.content || '',
+        toolCalls,
+      };
+    } catch (error) {
+      this.logger.error(`Error in chatWithTools: ${error}`);
+      throw error;
+    }
+  }
+
+
+  /**
    * Raw streaming chat using direct Ollama API
    */
   async *rawChatStream(options: {

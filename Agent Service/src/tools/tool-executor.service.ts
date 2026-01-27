@@ -397,6 +397,66 @@ export class ToolExecutorService {
   }
 
   /**
+   * Get tools in Ollama's JSON Schema format for native tool calling
+   */
+  getToolsForOllama(): Array<{
+    type: 'function';
+    function: {
+      name: string;
+      description: string;
+      parameters: {
+        type: 'object';
+        properties: Record<string, { type: string; description: string; enum?: string[] }>;
+        required: string[];
+      };
+    };
+  }> {
+    const ollamaTools: Array<{
+      type: 'function';
+      function: {
+        name: string;
+        description: string;
+        parameters: {
+          type: 'object';
+          properties: Record<string, { type: string; description: string; enum?: string[] }>;
+          required: string[];
+        };
+      };
+    }> = [];
+
+    for (const tool of this.tools.values()) {
+      const properties: Record<string, { type: string; description: string; enum?: string[] }> = {};
+      const required: string[] = [];
+
+      for (const [paramName, paramDef] of Object.entries(tool.parameters)) {
+        properties[paramName] = {
+          type: paramDef.type,
+          description: paramDef.description,
+        };
+        if (paramDef.required) {
+          required.push(paramName);
+        }
+      }
+
+      ollamaTools.push({
+        type: 'function',
+        function: {
+          name: tool.name,
+          description: tool.description,
+          parameters: {
+            type: 'object',
+            properties,
+            required,
+          },
+        },
+      });
+    }
+
+    return ollamaTools;
+  }
+
+
+  /**
    * Execute a parsed tool call
    */
   async executeTool(
@@ -428,6 +488,41 @@ export class ToolExecutorService {
       };
     }
   }
+
+  /**
+   * Execute a native tool call from Ollama (simpler interface)
+   */
+  async executeNativeToolCall(
+    name: string,
+    args: Record<string, unknown>,
+    context: ToolExecutionContext
+  ): Promise<ToolExecutionResult> {
+    const tool = this.tools.get(name);
+    
+    if (!tool) {
+      this.logger.warn(`Unknown tool: ${name}`);
+      return {
+        success: false,
+        error: `Unknown tool: ${name}`,
+        summary: `Tool "${name}" not found`,
+      };
+    }
+
+    try {
+      this.logger.debug(`Executing native tool: ${name} with args: ${JSON.stringify(args)}`);
+      const result = await tool.execute(args, context);
+      this.logger.debug(`Tool ${name} result: ${result.summary}`);
+      return result;
+    } catch (error) {
+      this.logger.error(`Tool execution error (${name}): ${error}`);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        summary: `Tool "${name}" failed`,
+      };
+    }
+  }
+
 
   /**
    * Execute multiple tool calls

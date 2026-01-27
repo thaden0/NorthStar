@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter } from 'events';
 import { OllamaService } from '../llm/ollama.service';
 import { ToolParserService } from '../tools/tool-parser.service';
-import { ToolExecutorService, ToolExecutionContext, ToolExecutionResult } from '../tools/tool-executor.service';
+import { ToolExecutorService, ToolExecutionContext } from '../tools/tool-executor.service';
 import { DatabaseService } from '../database/database.service';
 import { AnalyticsService } from '../settings/analytics.service';
 import { SettingsService } from '../settings/settings.service';
@@ -20,34 +20,17 @@ import {
 import { eq, desc } from 'drizzle-orm';
 
 /**
- * System prompt that instructs the LLM how to use tools via JSON output
+ * System prompt for native tool calling
+ * Ollama handles the tool call format, we just guide the decision-making
  */
-const SYSTEM_PROMPT = `You are an AI assistant that uses tools. Current time: {CURRENT_TIME}
+const SYSTEM_PROMPT = `You are an AI assistant with access to tools. Current time: {CURRENT_TIME}
 
-TOOLS:
-{TOOL_DESCRIPTIONS}
-
-FORMAT - Output exactly ONE JSON tool call:
-{"tool": "TOOL_NAME", "arguments": {"key": "value"}}
-
-⚠️ SCHEDULING RULE - MOST IMPORTANT:
-If the user mentions ANY future time like "at 5pm", "tomorrow", "at 12:25am", "every Friday" - you MUST use schedule_task.
-DO NOT answer the question directly - SCHEDULE IT.
-
-Example: "At 12:25am tell me a haiku about Canada"
-{"tool": "schedule_task", "arguments": {"name": "Haiku about Canada", "prompt": "Tell me a haiku about Canada", "scheduleType": "once", "scheduledAt": "{EXAMPLE_DATE}T00:25:00"}}
-
-Example: "Every Monday check the news"
-{"tool": "schedule_task", "arguments": {"name": "Monday news check", "prompt": "Check the news", "scheduleType": "recurring", "recurringPattern": "weekly", "recurringDay": 1, "recurringTime": "09:00"}}
-
-For questions WITHOUT a time reference, answer directly:
-{"tool": "complete_task", "arguments": {"summary": "Answered question", "result": "Your answer here"}}
-
-RULES:
-1. ONE tool call per response
-2. For scheduling: Use ISO datetime format (YYYY-MM-DDTHH:MM:SS)
-3. Time phrases like "today at X" mean today's date with that time
-4. Output ONLY valid JSON, no other text`;
+CRITICAL RULES:
+1. If the user mentions ANY future time like "at 5pm", "tomorrow", "at 12:25am", "every Friday", "remind me" - you MUST use schedule_task. Do NOT answer directly.
+2. For scheduling, use ISO datetime format: YYYY-MM-DDTHH:MM:SS (e.g., {EXAMPLE_DATE}T14:30:00)
+3. "today at X" means today's date ({EXAMPLE_DATE}) with that time
+4. For questions without a time reference, use complete_task with your answer
+5. Use ONE tool per response`;
 
 
 
@@ -157,8 +140,7 @@ export class AgentService {
     // Get conversation history
     const history = await this.getConversationHistory(context.conversationId);
 
-    // Build system prompt with tool descriptions and current time
-    const toolDescriptions = this.toolExecutorService.getToolDescriptions();
+    // Build system prompt with current time context
     const now = new Date();
     const currentTime = now.toLocaleString('en-US', { 
       timeZone: 'America/New_York',
@@ -167,9 +149,11 @@ export class AgentService {
     });
     const todayDate = now.toISOString().split('T')[0]; // YYYY-MM-DD format
     const systemPrompt = SYSTEM_PROMPT
-      .replace('{TOOL_DESCRIPTIONS}', toolDescriptions)
       .replace('{CURRENT_TIME}', currentTime)
-      .replace('{EXAMPLE_DATE}', todayDate);
+      .replace(new RegExp('\\{EXAMPLE_DATE\\}', 'g'), todayDate);
+
+    // Get tools in Ollama format for native tool calling
+    const ollamaTools = this.toolExecutorService.getToolsForOllama();
 
     // Build initial messages
     const chatMessages: ChatMessage[] = [
@@ -213,11 +197,12 @@ export class AgentService {
         iterations++;
         this.logger.debug(`Agent iteration ${iterations}/${context.maxIterations}`);
 
-        // Generate response using raw chat
+        // Generate response using native tool calling
         const llmStartTime = Date.now();
-        const response = await this.ollamaService.rawChat({
+        const response = await this.ollamaService.chatWithTools({
           model: modelName,
           messages: chatMessages,
+          tools: ollamaTools,
           temperature: 0.7,
         });
         const llmDuration = Date.now() - llmStartTime;
@@ -233,95 +218,82 @@ export class AgentService {
         });
 
         const llmContent = stripThinkTags(response.content);
-        this.logger.debug(`LLM response (${llmContent.length} chars): ${llmContent.substring(0, 200)}...`);
+        this.logger.debug(`LLM response: ${llmContent.substring(0, 100)}... toolCalls: ${response.toolCalls?.length || 0}`);
 
-        // Parse tool calls from the response
-        const parseResult = this.toolParserService.parseToolCalls(llmContent);
-        
-        if (parseResult.toolCalls.length > 0) {
-          // STRICT: Only execute the FIRST tool call, ignore the rest
-          // This enforces the "one tool at a time" rule
-          const toolsToExecute = [parseResult.toolCalls[0]];
+        // Check for native tool calls from Ollama
+        if (response.toolCalls && response.toolCalls.length > 0) {
+          // Use the first tool call (enforce one at a time)
+          const nativeToolCall = response.toolCalls[0];
+          const toolCall = {
+            name: nativeToolCall.name,
+            arguments: nativeToolCall.arguments as Record<string, unknown>,
+          };
           
-          if (parseResult.toolCalls.length > 1) {
-            this.logger.debug(`Model output ${parseResult.toolCalls.length} tools, executing only first: ${toolsToExecute[0].name}`);
-          }
+          this.logger.debug(`Executing native tool call: ${toolCall.name}`);
           
-          this.logger.debug(`Executing tool: ${toolsToExecute[0].name}`);
-          
-          // Emit any text before tools
-          if (parseResult.textBeforeTools) {
+          // Emit content if any
+          if (llmContent) {
             this.emitEvent(emitter, {
               type: 'content',
-              content: parseResult.textBeforeTools,
+              content: llmContent,
               timestamp: new Date().toISOString(),
             });
           }
+        
+          // Emit tool start event
+          this.emitEvent(emitter, {
+            type: 'tool_start',
+            toolName: toolCall.name,
+            toolArgs: toolCall.arguments,
+            timestamp: new Date().toISOString(),
+          });
 
-          // Execute tool calls in order
-          const toolResults: Array<{ call: typeof parseResult.toolCalls[0]; result: ToolExecutionResult }> = [];
+          const toolStartTime = Date.now();
+          const result = await this.toolExecutorService.executeNativeToolCall(toolCall.name, toolCall.arguments, toolContext);
+          const toolDuration = Date.now() - toolStartTime;
           
-          for (const toolCall of toolsToExecute) {
-            this.emitEvent(emitter, {
-              type: 'tool_start',
-              toolName: toolCall.name,
-              toolArgs: toolCall.arguments,
-              timestamp: new Date().toISOString(),
-            });
+          toolCallHistory.push({
+            name: toolCall.name,
+            args: toolCall.arguments,
+            result: result.data || result.summary,
+            duration: toolDuration,
+          });
 
-            const toolStartTime = Date.now();
-            const result = await this.toolExecutorService.executeTool(toolCall, toolContext);
-            const toolDuration = Date.now() - toolStartTime;
+          this.emitEvent(emitter, {
+            type: 'tool_result',
+            toolName: toolCall.name,
+            result,
+            summary: result.summary,
+            timestamp: new Date().toISOString(),
+          });
+
+          // Check if task is complete
+          if (result.isComplete) {
+            isComplete = true;
+            finalResult = result.finalResult || result.summary;
             
-            toolResults.push({ call: toolCall, result });
-            toolCallHistory.push({
-              name: toolCall.name,
-              args: toolCall.arguments,
-              result: result.data || result.summary,
-              duration: toolDuration,
-            });
-
+            // Emit the final content
             this.emitEvent(emitter, {
-              type: 'tool_result',
-              toolName: toolCall.name,
-              result,
-              summary: result.summary,
+              type: 'content',
+              content: finalResult,
               timestamp: new Date().toISOString(),
             });
-
-            // Check if task is complete
-            if (result.isComplete) {
-              isComplete = true;
-              finalResult = result.finalResult || result.summary;
-              
-              // Emit the final content
-              this.emitEvent(emitter, {
-                type: 'content',
-                content: finalResult,
-                timestamp: new Date().toISOString(),
-              });
-              break;
-            }
           }
-
-          // If not complete, build context message with tool results and continue
           if (!isComplete) {
-            // Add assistant's response
+            // Add assistant's response (include tool call info)
             chatMessages.push({
               role: 'assistant',
-              content: llmContent,
+              content: llmContent || `Called tool: ${toolCall.name}`,
             });
 
-            // Build tool results context
-            const toolResultsText = toolResults.map((tr, i) => {
-              const resultJson = JSON.stringify(tr.result.data || tr.result.summary, null, 2);
-              return `[Tool ${i + 1}] ${tr.call.name}\nResult:\n\`\`\`json\n${resultJson}\n\`\`\``;
-            }).join('\n\n');
+            // Build tool result context
+            const resultJson = JSON.stringify(result.data || result.summary, null, 2);
+            const toolResultText = `Tool: ${toolCall.name}\nResult:\n\`\`\`json\n${resultJson}\n\`\`\``;
 
             // Add context message
             chatMessages.push({
               role: 'user',
-              content: `TOOL EXECUTION RESULTS:\n\n${toolResultsText}\n\nContinue working toward the user's goal. Use more tools if needed, or provide the final answer using complete_task.`,
+              content: `TOOL EXECUTION RESULT:\n\n${toolResultText}\n\nContinue working toward the user's goal. Use more tools if needed, or provide the final answer using complete_task.`,
             });
           }
         } else {
