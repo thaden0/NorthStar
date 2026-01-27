@@ -33,28 +33,40 @@ Output exactly ONE tool call as JSON:
 {"tool": "TOOL_NAME", "arguments": {"key": "value"}}
 \`\`\`
 
+CRITICAL DECISION RULES:
+1. If user says "at [TIME]", "tomorrow", "every [day]", "remind me", "schedule" -> USE schedule_task
+2. If user asks a question you can answer directly -> USE complete_task immediately
+3. If user needs web info -> USE browse_url or search_news FIRST, then complete_task
+
+SCHEDULING EXAMPLES:
+User: "At 11:35pm tell me a haiku about Canada"
+\`\`\`json
+{"tool": "schedule_task", "arguments": {"name": "Canada haiku", "prompt": "Tell me a haiku about Canada", "scheduleType": "once", "scheduledAt": "2026-01-27T23:35:00"}}
+\`\`\`
+
+User: "Every Friday search for gaming news"
+\`\`\`json
+{"tool": "schedule_task", "arguments": {"name": "Friday gaming news", "prompt": "Search for gaming news", "scheduleType": "recurring", "recurringPattern": "weekly", "recurringDay": 5, "recurringTime": "09:00"}}
+\`\`\`
+
+DIRECT ANSWER EXAMPLE:
+User: "What is 2+2?"
+\`\`\`json
+{"tool": "complete_task", "arguments": {"summary": "Answered math question", "result": "2+2 equals 4."}}
+\`\`\`
+
 IMPORTANT RULES:
 1. Output ONLY ONE tool call per response
 2. After each tool call, STOP and wait for results
-3. When you have the data you need, use complete_task to finish
-
-EXAMPLE:
-User asks: "Check my email"
-You respond with ONLY:
-\`\`\`json
-{"tool": "get_gmail_messages", "arguments": {"maxResults": 5}}
-\`\`\`
-Then STOP. Wait for results.
-
-When you receive results, respond with:
-\`\`\`json
-{"tool": "complete_task", "arguments": {"summary": "Checked email", "result": "Here are your emails:\\n\\n[list actual emails from results]"}}
-\`\`\`
+3. When you have data, use complete_task to finish
+4. For scheduling, calculate ISO datetime from user's request
 
 NEVER:
 - Call multiple tools in one response
+- Browse the web for simple questions you can answer
 - Make up or guess data
-- Call complete_task before receiving tool results`;
+- Output anything except a tool call JSON`;
+
 
 
 // Helper to strip <think> tags from model output
