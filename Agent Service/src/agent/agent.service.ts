@@ -22,50 +22,32 @@ import { eq, desc } from 'drizzle-orm';
 /**
  * System prompt that instructs the LLM how to use tools via JSON output
  */
-const SYSTEM_PROMPT = `You are an AI assistant that uses tools to help users.
+const SYSTEM_PROMPT = `You are an AI assistant that uses tools. Current time: {CURRENT_TIME}
 
-TOOLS AVAILABLE:
+TOOLS:
 {TOOL_DESCRIPTIONS}
 
-HOW TO USE TOOLS:
-Output exactly ONE tool call as JSON:
-\`\`\`json
+FORMAT - Output exactly ONE JSON tool call:
 {"tool": "TOOL_NAME", "arguments": {"key": "value"}}
-\`\`\`
 
-CRITICAL DECISION RULES:
-1. If user says "at [TIME]", "tomorrow", "every [day]", "remind me", "schedule" -> USE schedule_task
-2. If user asks a question you can answer directly -> USE complete_task immediately
-3. If user needs web info -> USE browse_url or search_news FIRST, then complete_task
+⚠️ SCHEDULING RULE - MOST IMPORTANT:
+If the user mentions ANY future time like "at 5pm", "tomorrow", "at 12:25am", "every Friday" - you MUST use schedule_task.
+DO NOT answer the question directly - SCHEDULE IT.
 
-SCHEDULING EXAMPLES:
-User: "At 11:35pm tell me a haiku about Canada"
-\`\`\`json
-{"tool": "schedule_task", "arguments": {"name": "Canada haiku", "prompt": "Tell me a haiku about Canada", "scheduleType": "once", "scheduledAt": "2026-01-27T23:35:00"}}
-\`\`\`
+Example: "At 12:25am tell me a haiku about Canada"
+{"tool": "schedule_task", "arguments": {"name": "Haiku about Canada", "prompt": "Tell me a haiku about Canada", "scheduleType": "once", "scheduledAt": "{EXAMPLE_DATE}T00:25:00"}}
 
-User: "Every Friday search for gaming news"
-\`\`\`json
-{"tool": "schedule_task", "arguments": {"name": "Friday gaming news", "prompt": "Search for gaming news", "scheduleType": "recurring", "recurringPattern": "weekly", "recurringDay": 5, "recurringTime": "09:00"}}
-\`\`\`
+Example: "Every Monday check the news"
+{"tool": "schedule_task", "arguments": {"name": "Monday news check", "prompt": "Check the news", "scheduleType": "recurring", "recurringPattern": "weekly", "recurringDay": 1, "recurringTime": "09:00"}}
 
-DIRECT ANSWER EXAMPLE:
-User: "What is 2+2?"
-\`\`\`json
-{"tool": "complete_task", "arguments": {"summary": "Answered math question", "result": "2+2 equals 4."}}
-\`\`\`
+For questions WITHOUT a time reference, answer directly:
+{"tool": "complete_task", "arguments": {"summary": "Answered question", "result": "Your answer here"}}
 
-IMPORTANT RULES:
-1. Output ONLY ONE tool call per response
-2. After each tool call, STOP and wait for results
-3. When you have data, use complete_task to finish
-4. For scheduling, calculate ISO datetime from user's request
-
-NEVER:
-- Call multiple tools in one response
-- Browse the web for simple questions you can answer
-- Make up or guess data
-- Output anything except a tool call JSON`;
+RULES:
+1. ONE tool call per response
+2. For scheduling: Use ISO datetime format (YYYY-MM-DDTHH:MM:SS)
+3. Time phrases like "today at X" mean today's date with that time
+4. Output ONLY valid JSON, no other text`;
 
 
 
@@ -175,9 +157,19 @@ export class AgentService {
     // Get conversation history
     const history = await this.getConversationHistory(context.conversationId);
 
-    // Build system prompt with tool descriptions
+    // Build system prompt with tool descriptions and current time
     const toolDescriptions = this.toolExecutorService.getToolDescriptions();
-    const systemPrompt = SYSTEM_PROMPT.replace('{TOOL_DESCRIPTIONS}', toolDescriptions);
+    const now = new Date();
+    const currentTime = now.toLocaleString('en-US', { 
+      timeZone: 'America/New_York',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: true 
+    });
+    const todayDate = now.toISOString().split('T')[0]; // YYYY-MM-DD format
+    const systemPrompt = SYSTEM_PROMPT
+      .replace('{TOOL_DESCRIPTIONS}', toolDescriptions)
+      .replace('{CURRENT_TIME}', currentTime)
+      .replace('{EXAMPLE_DATE}', todayDate);
 
     // Build initial messages
     const chatMessages: ChatMessage[] = [
