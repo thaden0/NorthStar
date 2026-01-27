@@ -343,6 +343,8 @@ export class ToolExecutorService {
             success: true,
             data: { jobId: job.id, name: job.name, nextRunAt: job.nextRunAt },
             summary: `Scheduled "${job.name}" to run ${scheduleDesc}`,
+            isComplete: true,
+            finalResult: `✅ I've scheduled your task "${job.name}" to run ${scheduleDesc}. You'll receive the results when it executes.`,
           };
         } catch (error) {
           return {
