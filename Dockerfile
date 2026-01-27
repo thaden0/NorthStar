@@ -27,8 +27,13 @@ WORKDIR /app
 
 ENV NODE_ENV production
 
+# Install Docker CLI for log access
+RUN apk add --no-cache docker-cli
+
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
+# Add nextjs user to docker group for socket access
+RUN addgroup nextjs docker || true
 
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
