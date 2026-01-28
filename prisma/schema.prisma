@@ -27,6 +27,10 @@ model User {
   logs              Log[]
   notifications     Notification[]
   scheduledTasks    ScheduledTask[]
+  clients           Client[]
+  timeEntries       TimeEntry[]
+  invoices          Invoice[]
+  invoiceSettings   InvoiceSettings?
 
   @@index([email])
 }
@@ -261,4 +265,136 @@ model ScheduledTask {
 
   @@index([userId])
   @@index([enabled])
+}
+
+// ==================== TIME TRACKING ====================
+
+model Client {
+  id          String          @id @default(cuid())
+  userId      String
+  name        String
+  email       String?
+  phone       String?
+  address     String?         @db.Text
+  notes       String?         @db.Text
+  hourlyRate  Float           @default(0)
+  color       String          @default("#3b82f6") // Hex color for UI
+  isActive    Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projects    ClientProject[]
+  timeEntries TimeEntry[]
+
+  @@index([userId])
+  @@index([isActive])
+}
+
+model ClientProject {
+  id          String      @id @default(cuid())
+  clientId    String
+  name        String
+  description String?     @db.Text
+  hourlyRate  Float?      // Override client rate if set
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  client      Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  timeEntries TimeEntry[]
+
+  @@index([clientId])
+  @@index([isActive])
+}
+
+model TimeEntry {
+  id          String         @id @default(cuid())
+  userId      String
+  clientId    String?
+  projectId   String?
+  startTimeUtc DateTime      // Stored in UTC
+  endTimeUtc   DateTime      // Stored in UTC
+  description String?        @db.Text
+  billable    Boolean        @default(true)
+  invoiced    Boolean        @default(false)
+  invoiceId   String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  client      Client?        @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  project     ClientProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  invoice     Invoice?       @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([clientId])
+  @@index([projectId])
+  @@index([startTimeUtc])
+  @@index([invoiced])
+}
+
+model Invoice {
+  id              String      @id @default(cuid())
+  userId          String
+  invoiceNumber   String
+  clientId        String?
+  clientName      String      // Snapshot of client name at invoice time
+  clientEmail     String?
+  clientAddress   String?     @db.Text
+  issueDate       DateTime
+  dueDate         DateTime?
+  subtotal        Float
+  taxRate         Float       @default(0)
+  taxAmount       Float       @default(0)
+  total           Float
+  notes           String?     @db.Text
+  terms           String?     @db.Text
+  status          String      @default("draft") // draft, sent, paid, overdue
+  paidAt          DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  timeEntries     TimeEntry[]
+  lineItems       InvoiceLineItem[]
+
+  @@unique([userId, invoiceNumber])
+  @@index([userId])
+  @@index([clientId])
+  @@index([status])
+}
+
+model InvoiceLineItem {
+  id          String   @id @default(cuid())
+  invoiceId   String
+  description String
+  quantity    Float    // Hours or units
+  rate        Float
+  amount      Float
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+}
+
+model InvoiceSettings {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  businessName      String?
+  businessEmail     String?
+  businessPhone     String?
+  businessAddress   String?  @db.Text
+  logoUrl           String?
+  defaultTaxRate    Float    @default(0)
+  defaultPaymentTerms String? @db.Text
+  defaultNotes      String?  @db.Text
+  invoicePrefix     String   @default("INV-")
+  nextInvoiceNumber Int      @default(1)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
