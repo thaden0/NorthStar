@@ -6,6 +6,7 @@ import { ToolExecutorService, ToolExecutionContext } from '../tools/tool-executo
 import { DatabaseService } from '../database/database.service';
 import { AnalyticsService } from '../settings/analytics.service';
 import { SettingsService } from '../settings/settings.service';
+import { MemoryToolsService } from '../memory/memory-tools.service';
 import {
   AgentMessage,
   ChatRequest,
@@ -31,7 +32,65 @@ CRITICAL RULES:
 3. For scheduling, use ISO datetime format: YYYY-MM-DDTHH:MM:SS (e.g., {EXAMPLE_DATE}T14:30:00)
 4. "today at X" means today's date ({EXAMPLE_DATE}) with that time
 5. For questions without a time reference, use complete_task with your answer
-6. Use ONE tool per response`;
+6. Use ONE tool per response
+
+=== MEMORY SYSTEM ===
+You have a PERSISTENT MEMORY system. Use it actively to provide personalized assistance!
+
+AVAILABLE MEMORY TOOLS:
+- save_memory: Store important information (preferences, events, goals, people)
+- search_memories: Find relevant past information semantically
+- update_memory: Modify existing memories
+- delete_memory: Remove outdated memories
+
+WHEN TO SAVE MEMORIES:
+- User mentions future events → save_memory with eventDate + relevanceDaysBefore
+- User shares preferences/habits → save_memory to remember later
+- User sets goals or intentions → save_memory with tags: [goals]
+- User mentions people → save_memory with tags: [people]
+- Important dates (birthdays, deadlines) → save_memory with eventDate
+
+MEMORY EXAMPLES:
+1. User: "My mom's birthday is March 15th"
+   → save_memory(content: "User's mother's birthday is March 15th", tags: ["people", "events"], eventDate: "2026-03-15", relevanceDaysBefore: 7)
+
+2. User: "I have a job interview next Tuesday at 2pm"
+   → save_memory(content: "Job interview scheduled", tags: ["events", "work"], eventDate: "2026-01-28", relevanceDaysBefore: 1, priority: 9)
+
+3. User: "I'm trying to eat less sugar"
+   → save_memory(content: "User is trying to reduce sugar intake", tags: ["health", "goals", "food"])
+
+IMPORTANT: Memory operations are processed but NOT shown in your response. Just use the tool and respond naturally.
+
+=== GOOGLE INTEGRATION ===
+{GOOGLE_STATUS}
+
+WHEN GOOGLE TOOLS ARE AVAILABLE:
+- send_email: Compose and send emails (user sees a preview widget to confirm/cancel)
+- read_email: Read emails (displays beautifully in widget)
+- search_emails: Search inbox by query
+- create_calendar_event: Add calendar events (shows widget with surrounding events)
+- update_calendar_event: Modify existing events
+- delete_calendar_event: Remove events
+- lookup_contact: Search Google Contacts by name or email
+
+PEOPLE LOOKUP BEHAVIOR:
+When users mention people by name:
+1. Use lookup_contact to check if they're in the user's Google Contacts
+2. If found, use their contact info to personalize your response
+3. If someone is mentioned positively and frequently, and they're NOT already a contact, you may politely offer:
+   "I notice you mention [Name] often. Would you like me to add them to your contacts?"
+4. Never be pushy about adding contacts - only suggest once and only if contextually appropriate
+
+WIDGET CONFIRMATION:
+For emails, calendar events, and contact operations, the user will see a preview widget where they can:
+- Review the details before the action completes
+- Cancel if they change their mind
+- Make edits before confirming
+
+If a user cancels an action, acknowledge it gracefully and offer to help make changes.
+
+{PROACTIVE_MEMORIES}`;
 
 
 
@@ -65,6 +124,7 @@ export class AgentService {
     private databaseService: DatabaseService,
     private analyticsService: AnalyticsService,
     private settingsService: SettingsService,
+    private memoryToolsService: MemoryToolsService,
   ) {}
 
   async processChat(request: ChatRequest, authToken?: string): Promise<{ conversationId: string; emitter: EventEmitter }> {
@@ -149,9 +209,35 @@ export class AgentService {
       hour: '2-digit', minute: '2-digit', hour12: true 
     });
     const todayDate = now.toISOString().split('T')[0]; // YYYY-MM-DD format
+    
+    // Get proactive memories for context injection
+    let proactiveMemoriesContext = '';
+    try {
+      proactiveMemoriesContext = await this.memoryToolsService.getProactiveContext(context.userId);
+      if (proactiveMemoriesContext) {
+        this.logger.debug(`Injecting ${proactiveMemoriesContext.split('\n').length} lines of proactive memory context`);
+      }
+    } catch (error) {
+      this.logger.warn(`Could not fetch proactive memories: ${error}`);
+    }
+    
+    // Check Google connection status (via authToken - if present, Google may be available)
+    let googleStatus = 'Google services: NOT CONNECTED. Gmail, Calendar, and Contacts tools are unavailable.';
+    if (authToken) {
+      // User has an auth token, which means they may have Google OAuth connected
+      googleStatus = `Google services: CONNECTED. You have access to Gmail, Calendar, and Contacts tools.
+
+When using these tools:
+- Email and calendar operations will show a preview widget to the user
+- The user can CANCEL before the action completes
+- Always include all required fields`;
+    }
+    
     const systemPrompt = SYSTEM_PROMPT
       .replace('{CURRENT_TIME}', currentTime)
-      .replace(new RegExp('\\{EXAMPLE_DATE\\}', 'g'), todayDate);
+      .replace(new RegExp('\\{EXAMPLE_DATE\\}', 'g'), todayDate)
+      .replace('{GOOGLE_STATUS}', googleStatus)
+      .replace('{PROACTIVE_MEMORIES}', proactiveMemoriesContext);
 
     // Get tools in Ollama format for native tool calling
     const ollamaTools = this.toolExecutorService.getToolsForOllama();
@@ -174,6 +260,31 @@ export class AgentService {
         this.emitEvent(emitter, {
           type: 'status',
           message,
+          timestamp: new Date().toISOString(),
+        });
+      },
+      onWidgetOpen: (data) => {
+        this.emitEvent(emitter, {
+          type: 'widget_open',
+          widgetId: data.widgetId,
+          widgetType: data.widgetType,
+          widgetData: data.widgetData,
+          canCancel: data.canCancel ?? true,
+          timestamp: new Date().toISOString(),
+        });
+      },
+      onWidgetUpdate: (widgetId, widgetData) => {
+        this.emitEvent(emitter, {
+          type: 'widget_update',
+          widgetId,
+          widgetData,
+          timestamp: new Date().toISOString(),
+        });
+      },
+      onWidgetClose: (widgetId) => {
+        this.emitEvent(emitter, {
+          type: 'widget_close',
+          widgetId,
           timestamp: new Date().toISOString(),
         });
       },

@@ -3,6 +3,7 @@ import { PlaywrightService } from './playwright.service';
 import { GoogleNewsService } from './google-news.service';
 import { GmailToolService } from './gmail-tool.service';
 import { CronJobsService } from '../cron/cron-jobs.service';
+import { MemoryToolsService } from '../memory/memory-tools.service';
 import { ParsedToolCall } from './tool-parser.service';
 
 /**
@@ -20,12 +21,25 @@ export interface ToolExecutionResult {
 }
 
 /**
+ * Widget event data types
+ */
+export interface WidgetEventData {
+  widgetId: string;
+  widgetType: 'email_send' | 'email_read' | 'calendar' | 'contacts';
+  widgetData: Record<string, unknown>;
+  canCancel?: boolean;
+}
+
+/**
  * Context passed to tools during execution
  */
 export interface ToolExecutionContext {
   userId: string;
   authToken?: string;
   onStatus?: (message: string) => void;
+  onWidgetOpen?: (data: WidgetEventData) => void;
+  onWidgetUpdate?: (widgetId: string, data: Record<string, unknown>) => void;
+  onWidgetClose?: (widgetId: string) => void;
 }
 
 /**
@@ -55,8 +69,10 @@ export class ToolExecutorService {
     private gmailToolService: GmailToolService,
     @Inject(forwardRef(() => CronJobsService))
     private cronJobsService: CronJobsService,
+    private memoryToolsService: MemoryToolsService,
   ) {
     this.registerDefaultTools();
+    this.registerMemoryTools();
   }
 
   /**
@@ -357,6 +373,26 @@ export class ToolExecutorService {
     });
 
     this.logger.log(`Registered ${this.tools.size} tools`);
+  }
+
+  /**
+   * Register memory tools from MemoryToolsService
+   */
+  private registerMemoryTools(): void {
+    const memoryTools = this.memoryToolsService.getToolDefinitions();
+    
+    for (const tool of memoryTools) {
+      this.registerTool({
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.parameters,
+        execute: async (args, context) => {
+          return tool.execute(args, context);
+        },
+      });
+    }
+    
+    this.logger.log(`Registered ${memoryTools.length} memory tools`);
   }
 
   /**

@@ -6,9 +6,10 @@ import { GmailToolService } from './gmail-tool.service';
 import { ToolParserService } from './tool-parser.service';
 import { ToolExecutorService } from './tool-executor.service';
 import { CronModule } from '../cron/cron.module';
+import { MemoryModule } from '../memory/memory.module';
 
 @Module({
-  imports: [ConfigModule, forwardRef(() => CronModule)],
+  imports: [ConfigModule, forwardRef(() => CronModule), MemoryModule],
   providers: [
     PlaywrightService,
     GoogleNewsService,

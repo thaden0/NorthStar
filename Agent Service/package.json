@@ -13,7 +13,9 @@
     "format": "prettier --write \"src/**/*.ts\"",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "db:seed-memory": "npx tsx scripts/seed-memory.ts",
+    "setup": "npm run db:push && npm run db:seed-memory"
   },
   "dependencies": {
     "@langchain/community": "^0.3.0",

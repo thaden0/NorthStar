@@ -6,8 +6,25 @@ import {
   integer,
   boolean,
   uuid,
+  date,
+  customType,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
+
+// Custom pgvector type for embeddings (384 dimensions for nomic-embed-text)
+export const vector = customType<{ data: number[]; driverData: string }>({
+  dataType() {
+    return 'vector(384)';
+  },
+  toDriver(value: number[]): string {
+    return `[${value.join(',')}]`;
+  },
+  fromDriver(value: string): number[] {
+    // Handle postgres array format like "[0.1,0.2,...]"
+    const cleaned = value.replace(/^\[/, '').replace(/]$/, '');
+    return cleaned.split(',').map(Number);
+  },
+});
 
 // Users table - synced from external service
 export const users = pgTable('users', {
@@ -241,3 +258,99 @@ export type CronJob = typeof cronJobs.$inferSelect;
 export type NewCronJob = typeof cronJobs.$inferInsert;
 export type JobExecution = typeof jobExecutions.$inferSelect;
 export type NewJobExecution = typeof jobExecutions.$inferInsert;
+
+// ============================================================================
+// MEMORY SYSTEM TABLES
+// ============================================================================
+
+// Memory Tags - categories for organizing memories
+export const memoryTags = pgTable('memory_tags', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  name: text('name').notNull().unique(),
+  description: text('description'),
+  color: text('color'),  // Hex color for UI (#4CAF50)
+  icon: text('icon'),    // Icon identifier
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// Memories - core memory storage with vector embeddings
+export const memories = pgTable('memories', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+
+  // Content
+  content: text('content').notNull(),
+  summary: text('summary'),  // Brief summary for context injection
+
+  // Vector embedding for semantic search (384 dims for nomic-embed-text)
+  embedding: vector('embedding'),
+
+  // Date handling
+  eventDate: date('event_date'),           // When the event occurs
+  eventDateEnd: date('event_date_end'),    // End of date range (optional)
+  expiryDate: date('expiry_date'),         // Auto-archive after this date
+  relevanceDaysBefore: integer('relevance_days_before').default(1),
+
+  // Status & priority
+  isActive: boolean('is_active').default(true).notNull(),
+  priority: integer('priority').default(5),  // 1-10 scale
+
+  // Metadata
+  source: text('source').default('agent').notNull(),  // 'agent', 'user', 'system'
+  metadata: jsonb('metadata').$type<Record<string, unknown>>(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Memory Tag Assignments - many-to-many junction table
+export const memoryTagAssignments = pgTable('memory_tag_assignments', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  memoryId: uuid('memory_id')
+    .notNull()
+    .references(() => memories.id, { onDelete: 'cascade' }),
+  tagId: uuid('tag_id')
+    .notNull()
+    .references(() => memoryTags.id, { onDelete: 'cascade' }),
+});
+
+// Memory Relations
+export const memoryTagsRelations = relations(memoryTags, ({ many }) => ({
+  assignments: many(memoryTagAssignments),
+}));
+
+export const memoriesRelations = relations(memories, ({ one, many }) => ({
+  user: one(users, {
+    fields: [memories.userId],
+    references: [users.id],
+  }),
+  tagAssignments: many(memoryTagAssignments),
+}));
+
+export const memoryTagAssignmentsRelations = relations(
+  memoryTagAssignments,
+  ({ one }) => ({
+    memory: one(memories, {
+      fields: [memoryTagAssignments.memoryId],
+      references: [memories.id],
+    }),
+    tag: one(memoryTags, {
+      fields: [memoryTagAssignments.tagId],
+      references: [memoryTags.id],
+    }),
+  }),
+);
+
+// Add memories relation to users
+export const usersMemoriesRelation = relations(users, ({ many }) => ({
+  memories: many(memories),
+}));
+
+// Memory Type Exports
+export type MemoryTag = typeof memoryTags.$inferSelect;
+export type NewMemoryTag = typeof memoryTags.$inferInsert;
+export type Memory = typeof memories.$inferSelect;
+export type NewMemory = typeof memories.$inferInsert;
+export type MemoryTagAssignment = typeof memoryTagAssignments.$inferSelect;
+export type NewMemoryTagAssignment = typeof memoryTagAssignments.$inferInsert;

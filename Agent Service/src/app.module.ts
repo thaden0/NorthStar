@@ -10,6 +10,7 @@ import { ToolsModule } from './tools/tools.module';
 import { LlmModule } from './llm/llm.module';
 import { CronModule } from './cron/cron.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { MemoryModule } from './memory/memory.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -28,6 +29,7 @@ import { HealthController } from './health.controller';
     LlmModule,
     CronModule,
     NotificationsModule,
+    MemoryModule,
   ],
   controllers: [HealthController],
 })

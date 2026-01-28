@@ -88,6 +88,26 @@ export const SSEEventSchema = z.discriminatedUnion('type', [
     error: z.string(),
     timestamp: z.string(),
   }),
+  // Widget events
+  z.object({
+    type: z.literal('widget_open'),
+    widgetId: z.string(),
+    widgetType: z.enum(['email_send', 'email_read', 'calendar', 'contacts']),
+    widgetData: z.record(z.unknown()),
+    canCancel: z.boolean().optional(),
+    timestamp: z.string(),
+  }),
+  z.object({
+    type: z.literal('widget_update'),
+    widgetId: z.string(),
+    widgetData: z.record(z.unknown()),
+    timestamp: z.string(),
+  }),
+  z.object({
+    type: z.literal('widget_close'),
+    widgetId: z.string(),
+    timestamp: z.string(),
+  }),
 ]);
 
 export type SSEEvent = z.infer<typeof SSEEventSchema>;

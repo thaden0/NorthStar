@@ -1,0 +1,623 @@
+/* Widget Drawer System Styles */
+
+/* ============================================
+   Drawer Container
+   ============================================ */
+.widgetDrawer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  max-height: 50vh;
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--glass-border);
+  z-index: 50;
+  
+  /* Slide animation */
+  transform: translateY(-100%);
+  opacity: 0;
+  transition: transform 300ms ease-out, opacity 300ms ease-out;
+  overflow: hidden;
+}
+
+.widgetDrawerOpen {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.widgetDrawerClosing {
+  transform: translateY(-100%);
+  opacity: 0;
+}
+
+/* Timer Progress Bar */
+.drawerTimer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--blue-electric), var(--blue-ice));
+  transition: width linear;
+  box-shadow: 0 0 10px var(--blue-electric);
+}
+
+.drawerTimerPaused {
+  background: linear-gradient(90deg, #22C55E, #4ADE80);
+  box-shadow: 0 0 10px #22C55E;
+}
+
+/* Drawer Header */
+.drawerHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.drawerTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.drawerTitle svg {
+  color: var(--blue-ice);
+}
+
+.drawerActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.drawerCloseBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: var(--glass-2);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.drawerCloseBtn:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.5);
+  color: #EF4444;
+}
+
+/* Widget Grid */
+.widgetGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4);
+  padding: var(--space-4);
+  max-height: calc(50vh - 60px);
+  overflow-y: auto;
+}
+
+@media (max-width: 1200px) {
+  .widgetGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .widgetGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ============================================
+   Base Widget Card
+   ============================================ */
+.widgetCard {
+  background: var(--glass-2);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  min-height: 180px;
+  max-height: 320px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: all var(--transition-fast);
+  animation: widgetSlideIn 0.3s ease-out;
+}
+
+@keyframes widgetSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.widgetCard:hover {
+  border-color: var(--blue-electric);
+  box-shadow: 0 4px 20px rgba(0, 102, 255, 0.1);
+}
+
+.widgetHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--glass-border);
+  flex-shrink: 0;
+}
+
+.widgetHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.widgetIcon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+}
+
+.widgetIconEmail {
+  background: linear-gradient(135deg, #EA4335, #FBBC04);
+  color: white;
+}
+
+.widgetIconCalendar {
+  background: linear-gradient(135deg, #4285F4, #34A853);
+  color: white;
+}
+
+.widgetIconContacts {
+  background: linear-gradient(135deg, #8B5CF6, #6366F1);
+  color: white;
+}
+
+.widgetTitle {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.widgetSubtitle {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.widgetContent {
+  flex: 1;
+  padding: var(--space-3);
+  overflow-y: auto;
+}
+
+.widgetFooter {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-top: 1px solid var(--glass-border);
+  flex-shrink: 0;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+/* ============================================
+   Widget Buttons
+   ============================================ */
+.widgetBtn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border: none;
+}
+
+.widgetBtnPrimary {
+  background: var(--gradient-primary);
+  color: white;
+}
+
+.widgetBtnPrimary:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-glow-blue);
+}
+
+.widgetBtnSecondary {
+  background: var(--glass-2);
+  border: 1px solid var(--glass-border);
+  color: var(--text-secondary);
+}
+
+.widgetBtnSecondary:hover {
+  background: var(--glass-3);
+  border-color: var(--blue-electric);
+}
+
+.widgetBtnDanger {
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #EF4444;
+}
+
+.widgetBtnDanger:hover {
+  background: rgba(239, 68, 68, 0.3);
+}
+
+.widgetBtnSuccess {
+  background: linear-gradient(135deg, #22C55E, #16A34A);
+  color: white;
+}
+
+.widgetBtnSuccess:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 0 15px rgba(34, 197, 94, 0.4);
+}
+
+/* ============================================
+   Email Send Widget
+   ============================================ */
+.emailField {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.emailField:last-child {
+  border-bottom: none;
+}
+
+.emailFieldLabel {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  min-width: 50px;
+  padding-top: 2px;
+}
+
+.emailFieldValue {
+  font-size: 0.8rem;
+  color: var(--text-primary);
+  flex: 1;
+  word-break: break-word;
+}
+
+.emailBody {
+  padding: var(--space-3);
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  max-height: 120px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+
+.emailBodyTyping::after {
+  content: '▊';
+  animation: blink 1s infinite;
+  color: var(--blue-ice);
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+/* ============================================
+   Email Read Widget
+   ============================================ */
+.emailReadHeader {
+  margin-bottom: var(--space-3);
+}
+
+.emailFrom {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.emailAvatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #EA4335, #FBBC04);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.emailFromInfo {
+  flex: 1;
+}
+
+.emailFromName {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.emailFromEmail {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.emailDate {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.emailSubject {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: var(--space-2);
+}
+
+.emailBodyRead {
+  font-size: 0.8rem;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  max-height: 100px;
+  overflow-y: auto;
+}
+
+/* ============================================
+   Calendar Widget
+   ============================================ */
+.calendarWidget {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.miniCalendar {
+  flex-shrink: 0;
+  width: 140px;
+}
+
+.miniCalendarHeader {
+  text-align: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-2);
+}
+
+.miniCalendarGrid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.miniCalendarDay {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+}
+
+.miniCalendarDayHeader {
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: 0.6rem;
+}
+
+.miniCalendarDayToday {
+  background: var(--glass-3);
+  color: var(--text-primary);
+}
+
+.miniCalendarDayEvent {
+  background: var(--blue-electric);
+  color: white;
+}
+
+.miniCalendarDaySelected {
+  background: linear-gradient(135deg, #22C55E, #16A34A);
+  color: white;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.4);
+}
+
+.calendarEventDetails {
+  flex: 1;
+}
+
+.calendarEventTitle {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: var(--space-2);
+}
+
+.calendarEventMeta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.calendarEventRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.calendarEventRow svg {
+  color: var(--blue-ice);
+  flex-shrink: 0;
+}
+
+.calendarSurrounding {
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--glass-border);
+}
+
+.calendarSurroundingTitle {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: var(--space-1);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.calendarSurroundingEvent {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.calendarSurroundingDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--blue-electric);
+  flex-shrink: 0;
+}
+
+/* ============================================
+   Contacts Widget
+   ============================================ */
+.contactCard {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.contactAvatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #8B5CF6, #6366F1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 600;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.contactAvatarImage {
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+.contactInfo {
+  flex: 1;
+}
+
+.contactName {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: var(--space-1);
+}
+
+.contactDetail {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-1);
+}
+
+.contactDetail svg {
+  color: var(--blue-ice);
+  flex-shrink: 0;
+  font-size: 0.8rem;
+}
+
+.contactOperation {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  background: rgba(139, 92, 246, 0.2);
+  border-radius: var(--radius-full);
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #A78BFA;
+  margin-top: var(--space-2);
+}
+
+/* ============================================
+   Loading Overlay for Widgets
+   ============================================ */
+.widgetLoading {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: inherit;
+}
+
+.widgetSpinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--glass-border);
+  border-top-color: var(--blue-electric);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/* ============================================
+   Empty State
+   ============================================ */
+.widgetEmpty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.widgetEmpty svg {
+  font-size: 2rem;
+  margin-bottom: var(--space-2);
+  opacity: 0.5;
+}
+
+.widgetEmptyText {
+  font-size: 0.8rem;
+}

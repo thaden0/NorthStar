@@ -18,6 +18,7 @@ import {
   FiZap
 } from 'react-icons/fi';
 import styles from './ai-insights.module.css';
+import { WidgetDrawer, Widget } from '@/components/widgets';
 
 interface Message {
   id: string;
@@ -38,13 +39,18 @@ interface Conversation {
 }
 
 interface SSEEvent {
-  type: 'connected' | 'status' | 'thinking' | 'tool_start' | 'tool_result' | 'content' | 'complete' | 'error';
+  type: 'connected' | 'status' | 'thinking' | 'tool_start' | 'tool_result' | 'content' | 'complete' | 'error' | 'widget_open' | 'widget_update' | 'widget_close';
   message?: string;
   content?: string;
   finalContent?: string;
   toolName?: string;
   result?: string;
   error?: string;
+  // Widget-specific fields
+  widgetId?: string;
+  widgetType?: 'email_send' | 'email_read' | 'calendar' | 'contacts';
+  widgetData?: Record<string, unknown>;
+  canCancel?: boolean;
 }
 
 interface ChatClientProps {
@@ -207,6 +213,7 @@ export default function ChatClient({ userId, userName, userEmail: _userEmail }: 
   const [statusMessage, setStatusMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [serviceOnline, setServiceOnline] = useState(true);
+  const [widgets, setWidgets] = useState<Widget[]>([]);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -439,6 +446,36 @@ export default function ChatClient({ userId, userName, userEmail: _userEmail }: 
               setIsLoading(false);
               eventSource.close();
               break;
+              
+            case 'widget_open':
+              if (sseEvent.widgetId && sseEvent.widgetType && sseEvent.widgetData) {
+                setWidgets(prev => [
+                  ...prev.filter(w => w.id !== sseEvent.widgetId),
+                  {
+                    id: sseEvent.widgetId!,
+                    type: sseEvent.widgetType!,
+                    data: sseEvent.widgetData as unknown as Widget['data'],
+                    canCancel: sseEvent.canCancel ?? true,
+                  },
+                ]);
+              }
+              break;
+              
+            case 'widget_update':
+              if (sseEvent.widgetId && sseEvent.widgetData) {
+                setWidgets(prev => prev.map(w => 
+                  w.id === sseEvent.widgetId 
+                    ? { ...w, data: sseEvent.widgetData as unknown as Widget['data'] }
+                    : w
+                ));
+              }
+              break;
+              
+            case 'widget_close':
+              if (sseEvent.widgetId) {
+                setWidgets(prev => prev.filter(w => w.id !== sseEvent.widgetId));
+              }
+              break;
           }
         } catch (e) {
           console.error('Failed to parse SSE event:', e);
@@ -494,6 +531,47 @@ export default function ChatClient({ userId, userName, userEmail: _userEmail }: 
     return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
   }
 
+  // Widget handlers
+  async function handleWidgetCancel(widgetId: string) {
+    // Mark widget as processing
+    setWidgets(prev => prev.map(w => 
+      w.id === widgetId ? { ...w, isProcessing: true } : w
+    ));
+    
+    try {
+      // Send cancel request to agent
+      await fetch(`/api/agent/cancel/${widgetId}`, { method: 'POST' });
+    } catch (error) {
+      console.error('Failed to cancel widget action:', error);
+    }
+    
+    // Remove widget
+    setWidgets(prev => prev.filter(w => w.id !== widgetId));
+  }
+
+  async function handleWidgetConfirm(widgetId: string) {
+    // Mark widget as processing
+    setWidgets(prev => prev.map(w => 
+      w.id === widgetId ? { ...w, isProcessing: true } : w
+    ));
+    
+    try {
+      // Send confirm request to agent
+      await fetch(`/api/agent/confirm/${widgetId}`, { method: 'POST' });
+    } catch (error) {
+      console.error('Failed to confirm widget action:', error);
+    }
+    
+    // Remove widget after a short delay
+    setTimeout(() => {
+      setWidgets(prev => prev.filter(w => w.id !== widgetId));
+    }, 500);
+  }
+
+  function handleWidgetDrawerClose() {
+    setWidgets([]);
+  }
+
   return (
     <div className={styles.page}>
       {/* Sidebar - Conversations List */}
@@ -536,7 +614,15 @@ export default function ChatClient({ userId, userName, userEmail: _userEmail }: 
       </aside>
 
       {/* Chat Container */}
-      <div className={styles.chatContainer}>
+      <div className={styles.chatContainer} style={{ position: 'relative' }}>
+        {/* Widget Drawer - slides down from top */}
+        <WidgetDrawer
+          widgets={widgets}
+          onCancel={handleWidgetCancel}
+          onConfirm={handleWidgetConfirm}
+          onClose={handleWidgetDrawerClose}
+        />
+        
         {/* Chat Header with controls */}
         <div className={styles.chatHeader}>
           <h2 className={styles.chatTitle}>
