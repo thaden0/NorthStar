@@ -219,6 +219,33 @@ export const jobExecutions = pgTable('job_executions', {
   executionTimeMs: integer('execution_time_ms'),
 });
 
+// Background Tasks - long-running agent tasks
+export const backgroundTasks = pgTable('background_tasks', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  prompt: text('prompt').notNull(),
+  status: text('status').notNull().default('pending'), // 'pending', 'running', 'completed', 'failed'
+  progress: integer('progress').default(0),
+  currentStep: text('current_step'),
+  result: text('result'),
+  error: text('error'),
+  researchMode: boolean('research_mode').default(false),
+  metadata: jsonb('metadata').$type<Record<string, unknown>>(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  startedAt: timestamp('started_at'),
+  completedAt: timestamp('completed_at'),
+});
+
+// Background Tasks Relations
+export const backgroundTasksRelations = relations(backgroundTasks, ({ one }) => ({
+  user: one(users, {
+    fields: [backgroundTasks.userId],
+    references: [users.id],
+  }),
+}));
+
 // Cron Jobs Relations
 export const cronJobsRelations = relations(cronJobs, ({ one, many }) => ({
   user: one(users, {
@@ -258,6 +285,9 @@ export type CronJob = typeof cronJobs.$inferSelect;
 export type NewCronJob = typeof cronJobs.$inferInsert;
 export type JobExecution = typeof jobExecutions.$inferSelect;
 export type NewJobExecution = typeof jobExecutions.$inferInsert;
+export type BackgroundTask = typeof backgroundTasks.$inferSelect;
+export type NewBackgroundTask = typeof backgroundTasks.$inferInsert;
+
 
 // ============================================================================
 // MEMORY SYSTEM TABLES

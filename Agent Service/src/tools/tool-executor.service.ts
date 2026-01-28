@@ -4,6 +4,9 @@ import { GoogleNewsService } from './google-news.service';
 import { GmailToolService } from './gmail-tool.service';
 import { CronJobsService } from '../cron/cron-jobs.service';
 import { MemoryToolsService } from '../memory/memory-tools.service';
+import { WikipediaService } from './wikipedia.service';
+import { RedditService } from './reddit.service';
+import { BackgroundAgentService } from './background-agent.service';
 import { ParsedToolCall } from './tool-parser.service';
 
 /**
@@ -70,9 +73,16 @@ export class ToolExecutorService {
     @Inject(forwardRef(() => CronJobsService))
     private cronJobsService: CronJobsService,
     private memoryToolsService: MemoryToolsService,
+    private wikipediaService: WikipediaService,
+    private redditService: RedditService,
+    @Inject(forwardRef(() => BackgroundAgentService))
+    private backgroundAgentService: BackgroundAgentService,
   ) {
     this.registerDefaultTools();
     this.registerMemoryTools();
+    this.registerWikipediaTools();
+    this.registerRedditTools();
+    this.registerBackgroundTools();
   }
 
   /**
@@ -393,6 +403,305 @@ export class ToolExecutorService {
     }
     
     this.logger.log(`Registered ${memoryTools.length} memory tools`);
+  }
+
+  /**
+   * Register Wikipedia tools
+   */
+  private registerWikipediaTools(): void {
+    // Wikipedia search tool
+    this.registerTool({
+      name: 'search_wikipedia',
+      description: 'Search Wikipedia for articles matching a query. Returns article titles, snippets, and URLs.',
+      parameters: {
+        query: { type: 'string', description: 'Search query for Wikipedia', required: true },
+        limit: { type: 'number', description: 'Maximum number of results to return (default: 10)' },
+      },
+      execute: async (args, context) => {
+        const query = args.query as string;
+        const limit = (args.limit as number) || 10;
+        context.onStatus?.(`Searching Wikipedia for: ${query}`);
+        
+        const result = await this.wikipediaService.search(query, limit);
+        
+        if (result.error) {
+          return { success: false, error: result.error, summary: `Search failed: ${result.error}` };
+        }
+        
+        return {
+          success: true,
+          data: {
+            query: result.query,
+            resultCount: result.results.length,
+            results: result.results,
+          },
+          summary: `Found ${result.results.length} Wikipedia articles for "${query}"`,
+        };
+      },
+    });
+
+    // Get Wikipedia article tool
+    this.registerTool({
+      name: 'get_wikipedia_article',
+      description: 'Get the full content of a Wikipedia article including text, links, references, and categories.',
+      parameters: {
+        title: { type: 'string', description: 'Title of the Wikipedia article', required: true },
+      },
+      execute: async (args, context) => {
+        const title = args.title as string;
+        context.onStatus?.(`Fetching Wikipedia article: ${title}`);
+        
+        const result = await this.wikipediaService.getArticle(title);
+        
+        if ('error' in result) {
+          return { success: false, error: result.error, summary: `Failed to get article: ${result.error}` };
+        }
+        
+        return {
+          success: true,
+          data: {
+            title: result.title,
+            summary: result.summary,
+            content: result.content.substring(0, 8000), // Limit content size
+            url: result.url,
+            linkCount: result.links.length,
+            referenceCount: result.references.length,
+            categories: result.categories,
+            sampleLinks: result.links.slice(0, 15),
+            sampleReferences: result.references.slice(0, 10),
+          },
+          summary: `Retrieved "${result.title}" - ${result.content.length} chars, ${result.links.length} links, ${result.references.length} references`,
+        };
+      },
+    });
+
+    this.logger.log('Registered Wikipedia tools');
+  }
+
+  /**
+   * Register Reddit tools
+   */
+  private registerRedditTools(): void {
+    // Reddit search tool
+    this.registerTool({
+      name: 'search_reddit',
+      description: 'Search Reddit for posts on a topic. Can optionally filter by subreddit.',
+      parameters: {
+        query: { type: 'string', description: 'Search query', required: true },
+        subreddit: { type: 'string', description: 'Subreddit to search in (optional, searches all of Reddit if not specified)' },
+        sort: { type: 'string', description: 'Sort order: relevance, hot, top, new, comments (default: relevance)' },
+        time: { type: 'string', description: 'Time filter: hour, day, week, month, year, all (default: all)' },
+        limit: { type: 'number', description: 'Maximum number of results (default: 25, max: 100)' },
+      },
+      execute: async (args, context) => {
+        const query = args.query as string;
+        const subreddit = args.subreddit as string | undefined;
+        context.onStatus?.(`Searching Reddit for: ${query}${subreddit ? ` in r/${subreddit}` : ''}`);
+        
+        const result = await this.redditService.search(query, {
+          subreddit,
+          sort: args.sort as 'relevance' | 'hot' | 'top' | 'new' | 'comments',
+          time: args.time as 'hour' | 'day' | 'week' | 'month' | 'year' | 'all',
+          limit: (args.limit as number) || 25,
+        });
+        
+        if (result.error) {
+          return { success: false, error: result.error, summary: `Search failed: ${result.error}` };
+        }
+        
+        return {
+          success: true,
+          data: {
+            query: result.query,
+            subreddit: result.subreddit,
+            postCount: result.posts.length,
+            posts: result.posts.map(p => ({
+              id: p.id,
+              title: p.title,
+              subreddit: p.subreddit,
+              author: p.author,
+              score: p.score,
+              numComments: p.numComments,
+              url: p.url,
+              selftext: p.selftext?.substring(0, 500),
+              createdAt: new Date(p.createdUtc * 1000).toISOString(),
+            })),
+          },
+          summary: `Found ${result.posts.length} Reddit posts for "${query}"`,
+        };
+      },
+    });
+
+    // Read Reddit thread tool
+    this.registerTool({
+      name: 'read_reddit_thread',
+      description: 'Read a Reddit thread including the post content and top comments.',
+      parameters: {
+        permalink: { type: 'string', description: 'Reddit permalink or full URL to the thread', required: true },
+        sort: { type: 'string', description: 'Comment sort order: confidence, top, new, controversial, old, qa (default: top)' },
+        commentLimit: { type: 'number', description: 'Maximum number of comments to retrieve (default: 50)' },
+      },
+      execute: async (args, context) => {
+        const permalink = args.permalink as string;
+        context.onStatus?.(`Reading Reddit thread...`);
+        
+        const result = await this.redditService.getThread(permalink, {
+          sort: (args.sort as 'confidence' | 'top' | 'new' | 'controversial' | 'old' | 'qa') || 'top',
+          limit: (args.commentLimit as number) || 50,
+          depth: 3,
+        });
+        
+        if ('error' in result) {
+          return { success: false, error: result.error, summary: `Failed to read thread: ${result.error}` };
+        }
+        
+        // Flatten comments for easier reading
+        const flattenComments = (comments: typeof result.comments, maxDepth = 3): Array<{ author: string; body: string; score: number; depth: number }> => {
+          const flat: Array<{ author: string; body: string; score: number; depth: number }> = [];
+          for (const c of comments) {
+            flat.push({ author: c.author, body: c.body.substring(0, 1000), score: c.score, depth: c.depth });
+            if (c.depth < maxDepth && c.replies.length > 0) {
+              flat.push(...flattenComments(c.replies, maxDepth));
+            }
+          }
+          return flat;
+        };
+        
+        return {
+          success: true,
+          data: {
+            post: {
+              title: result.post.title,
+              author: result.post.author,
+              subreddit: result.post.subreddit,
+              score: result.post.score,
+              upvoteRatio: result.post.upvoteRatio,
+              numComments: result.post.numComments,
+              selftext: result.post.selftext,
+              url: result.post.url,
+              linkUrl: result.post.linkUrl,
+              createdAt: new Date(result.post.createdUtc * 1000).toISOString(),
+            },
+            comments: flattenComments(result.comments).slice(0, 30),
+            totalComments: result.totalComments,
+          },
+          summary: `Read thread "${result.post.title.substring(0, 50)}..." with ${result.comments.length} top-level comments`,
+        };
+      },
+    });
+
+    // Get hot posts tool
+    this.registerTool({
+      name: 'get_reddit_hot',
+      description: 'Get hot/trending posts from Reddit or a specific subreddit.',
+      parameters: {
+        subreddit: { type: 'string', description: 'Subreddit name (optional, gets front page if not specified)' },
+        limit: { type: 'number', description: 'Maximum number of posts (default: 25)' },
+      },
+      execute: async (args, context) => {
+        const subreddit = args.subreddit as string | undefined;
+        context.onStatus?.(`Getting hot posts${subreddit ? ` from r/${subreddit}` : ''}...`);
+        
+        const result = await this.redditService.getHot(subreddit, (args.limit as number) || 25);
+        
+        if (result.error) {
+          return { success: false, error: result.error, summary: `Failed: ${result.error}` };
+        }
+        
+        return {
+          success: true,
+          data: {
+            subreddit: subreddit || 'front page',
+            postCount: result.posts.length,
+            posts: result.posts.map(p => ({
+              title: p.title,
+              subreddit: p.subreddit,
+              score: p.score,
+              numComments: p.numComments,
+              url: p.url,
+            })),
+          },
+          summary: `Got ${result.posts.length} hot posts${subreddit ? ` from r/${subreddit}` : ''}`,
+        };
+      },
+    });
+
+    this.logger.log('Registered Reddit tools');
+  }
+
+  /**
+   * Register background agent tools
+   */
+  private registerBackgroundTools(): void {
+    // Start background task tool
+    this.registerTool({
+      name: 'start_background_task',
+      description: 'Start a long-running task in the background. The task will complete without blocking the conversation. Use this for complex research, data gathering, or any task that might take a long time.',
+      parameters: {
+        prompt: { type: 'string', description: 'The task to complete in the background', required: true },
+        researchMode: { type: 'boolean', description: 'Enable research mode to gather information from Wikipedia, news, and Reddit (default: false)' },
+      },
+      execute: async (args, context) => {
+        const prompt = args.prompt as string;
+        const researchMode = args.researchMode as boolean || false;
+        
+        context.onStatus?.(`Starting background ${researchMode ? 'research' : 'task'}...`);
+        
+        try {
+          const taskId = await this.backgroundAgentService.startBackgroundTask({
+            userId: context.userId,
+            prompt,
+            researchMode,
+            authToken: context.authToken,
+          });
+          
+          return {
+            success: true,
+            data: { taskId, researchMode },
+            summary: `Background ${researchMode ? 'research' : 'task'} started with ID: ${taskId}`,
+            isComplete: true,
+            finalResult: `✅ I've started a background ${researchMode ? 'research task' : 'task'} for you. Task ID: ${taskId}\n\nThe task will run in the background and you'll be notified when it's complete. You can check the status anytime.`,
+          };
+        } catch (error) {
+          return {
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+            summary: 'Failed to start background task',
+          };
+        }
+      },
+    });
+
+    // Check background task status
+    this.registerTool({
+      name: 'check_background_task',
+      description: 'Check the status of a background task.',
+      parameters: {
+        taskId: { type: 'string', description: 'The task ID to check', required: true },
+      },
+      execute: async (args, context) => {
+        const taskId = args.taskId as string;
+        context.onStatus?.('Checking task status...');
+        
+        const status = this.backgroundAgentService.getTaskStatus(taskId);
+        
+        if (!status) {
+          return {
+            success: false,
+            error: `Task ${taskId} not found or has been cleaned up`,
+            summary: 'Task not found',
+          };
+        }
+        
+        return {
+          success: true,
+          data: status,
+          summary: `Task ${taskId}: ${status.status} (${status.progress}%)${status.currentStep ? ` - ${status.currentStep}` : ''}`,
+        };
+      },
+    });
+
+    this.logger.log('Registered background agent tools');
   }
 
   /**

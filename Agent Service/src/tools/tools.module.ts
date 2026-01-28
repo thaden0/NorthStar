@@ -5,17 +5,33 @@ import { GoogleNewsService } from './google-news.service';
 import { GmailToolService } from './gmail-tool.service';
 import { ToolParserService } from './tool-parser.service';
 import { ToolExecutorService } from './tool-executor.service';
+import { WikipediaService } from './wikipedia.service';
+import { RedditService } from './reddit.service';
+import { BackgroundAgentService } from './background-agent.service';
 import { CronModule } from '../cron/cron.module';
 import { MemoryModule } from '../memory/memory.module';
+import { DatabaseModule } from '../database/database.module';
+import { LlmModule } from '../llm/llm.module';
+import { SettingsModule } from '../settings/settings.module';
 
 @Module({
-  imports: [ConfigModule, forwardRef(() => CronModule), MemoryModule],
+  imports: [
+    ConfigModule,
+    forwardRef(() => CronModule),
+    MemoryModule,
+    DatabaseModule,
+    LlmModule,
+    SettingsModule,
+  ],
   providers: [
     PlaywrightService,
     GoogleNewsService,
     GmailToolService,
     ToolParserService,
     ToolExecutorService,
+    WikipediaService,
+    RedditService,
+    BackgroundAgentService,
   ],
   exports: [
     PlaywrightService,
@@ -23,6 +39,10 @@ import { MemoryModule } from '../memory/memory.module';
     GmailToolService,
     ToolParserService,
     ToolExecutorService,
+    WikipediaService,
+    RedditService,
+    BackgroundAgentService,
   ],
 })
 export class ToolsModule {}
+
