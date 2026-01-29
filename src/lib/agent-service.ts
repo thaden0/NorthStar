@@ -81,13 +81,14 @@ export interface ModelStats {
 /**
  * Generate JWT token for Agent Service authentication
  */
-async function generateToken(userId: string, email?: string, name?: string): Promise<string> {
+async function generateToken(userId: string, email?: string, name?: string, aiInstructions?: string): Promise<string> {
   const secret = new TextEncoder().encode(JWT_SECRET);
   
   const token = await new SignJWT({
     sub: userId,
     email: email || `user-${userId}@northstar.local`,
     name: name || 'North Star User',
+    aiInstructions: aiInstructions || undefined,
   })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
@@ -106,15 +107,17 @@ export class AgentServiceClient {
   private userId: string;
   private userEmail?: string;
   private userName?: string;
+  private aiInstructions?: string;
 
-  constructor(userId: string, userEmail?: string, userName?: string) {
+  constructor(userId: string, userEmail?: string, userName?: string, aiInstructions?: string) {
     this.userId = userId;
     this.userEmail = userEmail;
     this.userName = userName;
+    this.aiInstructions = aiInstructions;
   }
 
   private async fetch<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    const token = await generateToken(this.userId, this.userEmail, this.userName);
+    const token = await generateToken(this.userId, this.userEmail, this.userName, this.aiInstructions);
     
     const response = await fetch(`${AGENT_SERVICE_URL}${endpoint}`, {
       ...options,
@@ -336,8 +339,8 @@ export class AgentServiceClient {
 /**
  * Create an Agent Service client for a user
  */
-export function createAgentClient(userId: string, email?: string, name?: string): AgentServiceClient {
-  return new AgentServiceClient(userId, email, name);
+export function createAgentClient(userId: string, email?: string, name?: string, aiInstructions?: string): AgentServiceClient {
+  return new AgentServiceClient(userId, email, name, aiInstructions);
 }
 
 /**
@@ -350,6 +353,6 @@ export function getAgentServiceUrl(): string {
 /**
  * Generate a token for client-side SSE connections
  */
-export async function generateClientToken(userId: string, email?: string, name?: string): Promise<string> {
-  return generateToken(userId, email, name);
+export async function generateClientToken(userId: string, email?: string, name?: string, aiInstructions?: string): Promise<string> {
+  return generateToken(userId, email, name, aiInstructions);
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAgentClient, generateClientToken, getAgentServiceUrl } from '@/lib/agent-service';
 import { getCurrentUser } from '@/lib/auth';
+import { db } from '@/lib/db';
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,7 +18,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Prompt is required' }, { status: 400 });
     }
 
-    const client = createAgentClient(user.id, user.email, user.name);
+    // Fetch user's AI instructions from database
+    const userData = await db.user.findUnique({
+      where: { id: user.id },
+      select: { aiInstructions: true },
+    });
+
+    const client = createAgentClient(user.id, user.email, user.name, userData?.aiInstructions || undefined);
     
     // Sync user to Agent Service (creates if not exists)
     try {
@@ -28,8 +35,8 @@ export async function POST(request: NextRequest) {
 
     const response = await client.chat(prompt, conversationId);
 
-    // Generate a client token for SSE streaming
-    const clientToken = await generateClientToken(user.id, user.email, user.name);
+    // Generate a client token for SSE streaming (include aiInstructions for stream auth)
+    const clientToken = await generateClientToken(user.id, user.email, user.name, userData?.aiInstructions || undefined);
 
     return NextResponse.json({
       ...response,

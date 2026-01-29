@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { toast } from 'sonner';
-import { FiUser, FiMail, FiLock, FiCamera, FiCheck } from 'react-icons/fi';
+import { FiUser, FiMail, FiLock, FiCamera, FiCheck, FiCpu } from 'react-icons/fi';
 import { updateProfileAction, changePasswordAction } from '@/server/auth/actions';
 import styles from './profile.module.css';
 
@@ -13,6 +13,7 @@ interface ProfileFormProps {
     name: string;
     email: string;
     avatar: string | null;
+    aiInstructions: string | null;
   };
 }
 
@@ -30,6 +31,8 @@ export default function ProfileForm({ user }: ProfileFormProps) {
   const [passwordSuccess, setPasswordSuccess] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [aiSuccess, setAiSuccess] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   async function handleProfileSubmit(formData: FormData) {
     setProfileError(null);
@@ -61,6 +64,25 @@ export default function ProfileForm({ user }: ProfileFormProps) {
     } else {
       setPasswordError(result.error || 'Failed to change password');
       toast.error(result.error || 'Failed to change password');
+    }
+  }
+
+  async function handleAiInstructionsSubmit(formData: FormData) {
+    setAiError(null);
+    setAiSuccess(false);
+    
+    // Add name and email to satisfy validation
+    formData.set('name', user.name);
+    formData.set('email', user.email);
+    
+    const result = await updateProfileAction(formData);
+    
+    if (result.success) {
+      setAiSuccess(true);
+      toast.success('AI instructions updated');
+    } else {
+      setAiError(result.error || 'Failed to update AI instructions');
+      toast.error(result.error || 'Failed to update AI instructions');
     }
   }
 
@@ -139,6 +161,43 @@ export default function ProfileForm({ user }: ProfileFormProps) {
           </div>
 
           <SubmitButton label="Save Changes" />
+        </form>
+      </div>
+
+      {/* AI Instructions Form */}
+      <div className={styles.card}>
+        <div className={styles.cardHeader}>
+          <h2>
+            <FiCpu style={{ marginRight: '8px' }} />
+            AI Instructions
+          </h2>
+        </div>
+        <form action={handleAiInstructionsSubmit} className={styles.form}>
+          {aiError && (
+            <div className={styles.error}>{aiError}</div>
+          )}
+          {aiSuccess && (
+            <div className={styles.success}>
+              <FiCheck /> AI instructions updated
+            </div>
+          )}
+          
+          <div className={styles.formGroup}>
+            <label htmlFor="aiInstructions">Custom Instructions</label>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '0.5rem' }}>
+              These instructions will be included in every AI conversation. Use this to customize how the AI responds to you.
+            </p>
+            <textarea
+              id="aiInstructions"
+              name="aiInstructions"
+              defaultValue={user.aiInstructions || ''}
+              className={styles.textarea}
+              rows={6}
+              placeholder="Example: Always respond in a friendly, casual tone. My timezone is EST. I prefer concise answers unless I ask for more detail."
+            />
+          </div>
+
+          <SubmitButton label="Save AI Instructions" />
         </form>
       </div>
 

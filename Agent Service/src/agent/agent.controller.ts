@@ -78,7 +78,12 @@ export class AgentController {
       // Extract token from header (remove "Bearer " prefix if present)
       const token = authHeader?.replace(/^Bearer\s+/i, '') || '';
 
-      const { conversationId } = await this.agentService.processChat(validated, token);
+      // Pass aiInstructions from JWT to the agent
+      const { conversationId } = await this.agentService.processChat(
+        validated, 
+        token,
+        user.aiInstructions,
+      );
 
       // If SSE endpoint is specified, client will connect there
       // Otherwise, return conversation ID for polling

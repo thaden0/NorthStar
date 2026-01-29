@@ -1,6 +1,7 @@
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import { FiUser } from 'react-icons/fi';
+import { db } from '@/lib/db';
 import ProfileForm from './ProfileForm';
 import GoogleIntegration from './GoogleIntegration';
 import styles from './profile.module.css';
@@ -11,6 +12,22 @@ export default async function ProfilePage() {
   const session = await getSession();
   
   if (!session) {
+    redirect('/login');
+  }
+
+  // Fetch full user data including aiInstructions
+  const user = await db.user.findUnique({
+    where: { id: session.userId },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      avatar: true,
+      aiInstructions: true,
+    },
+  });
+
+  if (!user) {
     redirect('/login');
   }
 
@@ -28,10 +45,11 @@ export default async function ProfilePage() {
 
       <ProfileForm
         user={{
-          id: session.userId,
-          name: session.user.name,
-          email: session.user.email,
-          avatar: session.user.avatar,
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          avatar: user.avatar,
+          aiInstructions: user.aiInstructions,
         }}
       />
 
@@ -45,4 +63,3 @@ export default async function ProfilePage() {
     </div>
   );
 }
-

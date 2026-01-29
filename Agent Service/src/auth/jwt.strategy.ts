@@ -8,6 +8,7 @@ export interface JwtPayload {
   sub: string;
   email?: string;
   name?: string;
+  aiInstructions?: string;
   iat?: number;
   exp?: number;
   iss?: string;

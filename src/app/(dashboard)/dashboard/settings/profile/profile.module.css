@@ -144,6 +144,30 @@
   color: var(--text-muted);
 }
 
+.textarea {
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  background: var(--glass-2);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 100px;
+  transition: all var(--transition-fast);
+}
+
+.textarea:focus {
+  outline: none;
+  border-color: var(--blue-electric);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+.textarea::placeholder {
+  color: var(--text-muted);
+}
+
 .error {
   padding: var(--space-3) var(--space-4);
   background: rgba(239, 68, 68, 0.1);

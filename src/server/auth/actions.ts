@@ -162,11 +162,15 @@ export async function updateProfileAction(formData: FormData): Promise<ActionRes
     }
   }
 
+  // Get AI instructions (optional field)
+  const aiInstructions = formData.get('aiInstructions') as string | null;
+
   await db.user.update({
     where: { id: session.userId },
     data: {
       name: data.name,
       email: data.email.toLowerCase(),
+      aiInstructions: aiInstructions || null,
     },
   });
 

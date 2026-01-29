@@ -25,7 +25,7 @@ import { eq, desc } from 'drizzle-orm';
  * Ollama handles the tool call format, we just guide the decision-making
  */
 const SYSTEM_PROMPT = `You are an AI assistant with access to tools. Current time: {CURRENT_TIME}
-
+{USER_AI_INSTRUCTIONS}
 CRITICAL RULES:
 1. If the user mentions ANY future time like "at 5pm", "tomorrow", "at 12:25am", "every Friday", "remind me" - you MUST use schedule_task. Do NOT answer directly.
 2. After successfully using schedule_task, immediately use complete_task to confirm the scheduling to the user.
@@ -105,6 +105,7 @@ interface AgentExecutionContext {
   parentExecutionId?: string;
   isSubAgent: boolean;
   maxIterations: number;
+  aiInstructions?: string;
 }
 
 interface ChatMessage {
@@ -127,7 +128,7 @@ export class AgentService {
     private memoryToolsService: MemoryToolsService,
   ) {}
 
-  async processChat(request: ChatRequest, authToken?: string): Promise<{ conversationId: string; emitter: EventEmitter }> {
+  async processChat(request: ChatRequest, authToken?: string, aiInstructions?: string): Promise<{ conversationId: string; emitter: EventEmitter }> {
     const db = this.databaseService.getDb();
     const emitter = new EventEmitter();
 
@@ -163,6 +164,7 @@ export class AgentService {
       userId: request.userId,
       isSubAgent: false,
       maxIterations: 10,
+      aiInstructions,
     }, request.prompt, emitter, authToken).catch((error) => {
       this.logger.error(`Agent execution error: ${error}`);
       this.emitEvent(emitter, {
@@ -233,11 +235,18 @@ When using these tools:
 - Always include all required fields`;
     }
     
+    // Build user AI instructions section
+    let userAiInstructionsSection = '';
+    if (context.aiInstructions) {
+      userAiInstructionsSection = `\n=== USER CUSTOM INSTRUCTIONS ===\nThe user has provided the following custom instructions that you should follow:\n${context.aiInstructions}\n`;
+    }
+    
     const systemPrompt = SYSTEM_PROMPT
       .replace('{CURRENT_TIME}', currentTime)
       .replace(new RegExp('\\{EXAMPLE_DATE\\}', 'g'), todayDate)
       .replace('{GOOGLE_STATUS}', googleStatus)
-      .replace('{PROACTIVE_MEMORIES}', proactiveMemoriesContext);
+      .replace('{PROACTIVE_MEMORIES}', proactiveMemoriesContext)
+      .replace('{USER_AI_INSTRUCTIONS}', userAiInstructionsSection);
 
     // Get tools in Ollama format for native tool calling
     const ollamaTools = this.toolExecutorService.getToolsForOllama();
