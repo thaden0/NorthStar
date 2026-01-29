@@ -29,11 +29,13 @@ interface DragState {
   entryId?: string;
   dayIndex: number;
   startY: number;
+  startX: number;
   startMinutes: number;
   endMinutes: number;
   originalStart?: number;
   originalEnd?: number;
   originalDay?: number;
+  hasMoved: boolean;
 }
 
 export default function TimeTrackingClient({ initialClients, initialProjects }: TimeTrackingClientProps) {
@@ -142,8 +144,10 @@ export default function TimeTrackingClient({ initialClients, initialProjects }: 
       mode: 'create',
       dayIndex,
       startY: y,
+      startX: e.clientX,
       startMinutes,
       endMinutes: startMinutes + SNAP_MINUTES,
+      hasMoved: false,
     });
     setPreviewBlock({
       day: dayIndex,
@@ -186,11 +190,13 @@ export default function TimeTrackingClient({ initialClients, initialProjects }: 
       entryId: entry.id,
       dayIndex: entry.dayOfWeek,
       startY: y,
+      startX: e.clientX,
       startMinutes: entry.startMinutes,
       endMinutes: entry.startMinutes + entry.durationMinutes,
       originalStart: entry.startMinutes,
       originalEnd: entry.startMinutes + entry.durationMinutes,
       originalDay: entry.dayOfWeek,
+      hasMoved: false,
     });
     
     setPreviewBlock({
@@ -382,6 +388,27 @@ export default function TimeTrackingClient({ initialClients, initialProjects }: 
     openEntryModal(entry);
   };
 
+  // Handle quick delete of a time block
+  const handleQuickDelete = async (entry: TimeBlock, e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    
+    if (!confirm('Delete this time entry?')) return;
+    
+    try {
+      const result = await deleteTimeEntryAction(entry.id);
+      if (result.success) {
+        useTimeTrackingStore.getState().removeTimeEntry(entry.id);
+        toast.success('Time entry deleted');
+      } else {
+        toast.error(result.error || 'Failed to delete');
+      }
+    } catch (error) {
+      console.error('Failed to delete:', error);
+      toast.error('Failed to delete');
+    }
+  };
+
   // Render time indicator for current time
   const renderCurrentTimeIndicator = () => {
     const now = toZonedTime(new Date(), DISPLAY_TIMEZONE);
@@ -542,6 +569,16 @@ export default function TimeTrackingClient({ initialClients, initialProjects }: 
                     >
                       {/* Resize handle top */}
                       <div className={styles.resizeHandleTop} />
+                      
+                      {/* Delete button */}
+                      <button
+                        className={styles.timeBlockDeleteBtn}
+                        onClick={(e) => handleQuickDelete(entry, e)}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        title="Delete"
+                      >
+                        <FiTrash2 size={12} />
+                      </button>
                       
                       <div className={styles.timeBlockTime}>
                         {format(entry.displayStartTime, 'h:mm a')} - {format(entry.displayEndTime, 'h:mm a')}
