@@ -297,6 +297,7 @@ model ClientProject {
   name        String
   description String?     @db.Text
   hourlyRate  Float?      // Override client rate if set
+  color       String      @default("#3b82f6") // Project color for time blocks
   isActive    Boolean     @default(true)
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt

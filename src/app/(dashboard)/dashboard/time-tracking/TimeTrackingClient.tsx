@@ -546,18 +546,19 @@ export default function TimeTrackingClient({ initialClients, initialProjects }: 
                   const project = projects.find(p => p.id === entry.projectId);
                   const top = entry.startMinutes / 60 * HOUR_HEIGHT;
                   const height = Math.max(entry.durationMinutes / 60 * HOUR_HEIGHT, 20);
-                  const bgColor = client?.color || 'var(--glass-3)';
+                  // Use project color first, then client color, then default
+                  const bgColor = project?.color || client?.color || 'var(--glass-3)';
                   const isBeingDragged = dragState?.entryId === entry.id;
 
                   return (
                     <div
                       key={entry.id}
-                      className={`${styles.timeBlock} ${!client ? styles.timeBlockNoClient : ''} ${isBeingDragged ? styles.timeBlockDragging : ''}`}
+                      className={`${styles.timeBlock} ${!project && !client ? styles.timeBlockNoClient : ''} ${isBeingDragged ? styles.timeBlockDragging : ''}`}
                       style={{
                         top,
                         height,
                         backgroundColor: bgColor,
-                        color: client ? 'white' : 'var(--text-secondary)',
+                        color: project || client ? 'white' : 'var(--text-secondary)',
                         opacity: isBeingDragged ? 0.5 : 1,
                       }}
                       onMouseDown={(e) => handleBlockMouseDown(e, entry)}
@@ -598,11 +599,11 @@ export default function TimeTrackingClient({ initialClients, initialProjects }: 
                         {format(entry.displayStartTime, 'h:mm a')} - {format(entry.displayEndTime, 'h:mm a')}
                       </div>
                       <div className={styles.timeBlockClient}>
-                        {client?.name || 'No client assigned'}
+                        {project?.name || client?.name || 'No project assigned'}
                       </div>
-                      {project && height > 50 && (
+                      {client && project && height > 50 && (
                         <div className={styles.timeBlockProject}>
-                          {project.name}
+                          {client.name}
                         </div>
                       )}
                       
@@ -696,9 +697,6 @@ function TimeEntryModal({ entry, clients, projects, onClose }: TimeEntryModalPro
   const [endTime, setEndTime] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
-  // Get available projects for selected client
-  const availableProjects = projects.filter(p => p.clientId === clientId && p.isActive);
-
   // Initialize times
   useEffect(() => {
     if (entry) {
@@ -709,15 +707,27 @@ function TimeEntryModal({ entry, clients, projects, onClose }: TimeEntryModalPro
     }
   }, [entry]);
 
-  // Clear project if client changes and project doesn't belong to new client
-  useEffect(() => {
+  // Handle project change - auto-set client when project is selected
+  const handleProjectChange = (newProjectId: string) => {
+    setProjectId(newProjectId);
+    if (newProjectId) {
+      const project = projects.find(p => p.id === newProjectId);
+      if (project) {
+        setClientId(project.clientId);
+      }
+    }
+  };
+
+  // Handle client change - clear project if it doesn't belong to new client
+  const handleClientChange = (newClientId: string) => {
+    setClientId(newClientId);
     if (projectId) {
       const project = projects.find(p => p.id === projectId);
-      if (project && project.clientId !== clientId) {
+      if (project && project.clientId !== newClientId) {
         setProjectId('');
       }
     }
-  }, [clientId, projectId, projects]);
+  };
 
   const handleSave = async () => {
     if (!entry) return;
@@ -818,11 +828,30 @@ function TimeEntryModal({ entry, clients, projects, onClose }: TimeEntryModalPro
         </div>
 
         <div className={styles.formGroup}>
+          <label className={styles.label}>Project</label>
+          <select
+            className={styles.select}
+            value={projectId}
+            onChange={(e) => handleProjectChange(e.target.value)}
+          >
+            <option value="">No project</option>
+            {projects.map((project) => {
+              const client = clients.find(c => c.id === project.clientId);
+              return (
+                <option key={project.id} value={project.id}>
+                  {project.name} ({client?.name || 'Unknown Client'})
+                </option>
+              );
+            })}
+          </select>
+        </div>
+
+        <div className={styles.formGroup}>
           <label className={styles.label}>Client</label>
           <select
             className={styles.select}
             value={clientId}
-            onChange={(e) => setClientId(e.target.value)}
+            onChange={(e) => handleClientChange(e.target.value)}
           >
             <option value="">No client</option>
             {clients.filter(c => c.isActive).map((client) => (
@@ -832,24 +861,6 @@ function TimeEntryModal({ entry, clients, projects, onClose }: TimeEntryModalPro
             ))}
           </select>
         </div>
-
-        {availableProjects.length > 0 && (
-          <div className={styles.formGroup}>
-            <label className={styles.label}>Project</label>
-            <select
-              className={styles.select}
-              value={projectId}
-              onChange={(e) => setProjectId(e.target.value)}
-            >
-              <option value="">No project</option>
-              {availableProjects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
 
         <div className={styles.formGroup}>
           <label className={styles.label}>Description</label>

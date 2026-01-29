@@ -481,6 +481,7 @@ function ProjectModal({ clientId, project, onClose, onSave }: ProjectModalProps)
   const [name, setName] = useState(project?.name || '');
   const [description, setDescription] = useState(project?.description || '');
   const [hourlyRate, setHourlyRate] = useState(project?.hourlyRate?.toString() || '');
+  const [color, setColor] = useState(project?.color || CLIENT_COLORS[0]);
   const [isSaving, setIsSaving] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -497,6 +498,7 @@ function ProjectModal({ clientId, project, onClose, onSave }: ProjectModalProps)
       formData.set('clientId', clientId);
       formData.set('name', name);
       formData.set('description', description);
+      formData.set('color', color);
       if (hourlyRate) {
         formData.set('hourlyRate', hourlyRate);
       }
@@ -566,6 +568,21 @@ function ProjectModal({ clientId, project, onClose, onSave }: ProjectModalProps)
               step="0.01"
               placeholder="Leave empty to use client rate"
             />
+          </div>
+
+          <div className={styles.formGroup}>
+            <label className={styles.label}>Color</label>
+            <div className={styles.colorPicker}>
+              {CLIENT_COLORS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  className={`${styles.colorOption} ${color === c ? styles.colorOptionSelected : ''}`}
+                  style={{ backgroundColor: c }}
+                  onClick={() => setColor(c)}
+                />
+              ))}
+            </div>
           </div>
 
           <div className={styles.modalActions}>

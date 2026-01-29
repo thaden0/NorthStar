@@ -30,6 +30,7 @@ const projectSchema = z.object({
   name: z.string().min(1, 'Project name is required'),
   description: z.string().optional().nullable(),
   hourlyRate: z.coerce.number().min(0).optional().nullable(),
+  color: z.string().default('#3b82f6'),
   isActive: z.boolean().default(true),
 });
 
@@ -222,6 +223,7 @@ export async function createProjectAction(formData: FormData): Promise<ActionRes
     name: formData.get('name') as string,
     description: (formData.get('description') as string) || null,
     hourlyRate: formData.get('hourlyRate') ? parseFloat(formData.get('hourlyRate') as string) : null,
+    color: (formData.get('color') as string) || '#3b82f6',
     isActive: formData.get('isActive') !== 'false',
   };
 
@@ -258,6 +260,7 @@ export async function updateProjectAction(id: string, formData: FormData): Promi
     name: formData.get('name') as string,
     description: (formData.get('description') as string) || null,
     hourlyRate: formData.get('hourlyRate') ? parseFloat(formData.get('hourlyRate') as string) : null,
+    color: (formData.get('color') as string) || '#3b82f6',
     isActive: formData.get('isActive') !== 'false',
   };
 

@@ -21,6 +21,7 @@ export interface ClientProject {
   name: string;
   description: string | null;
   hourlyRate: number | null;
+  color: string;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
