@@ -158,20 +158,34 @@
 }
 
 .select {
-  background: var(--glass-3);
+  background-color: rgba(30, 30, 46, 0.95);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
   padding: var(--space-2) var(--space-3);
+  padding-right: 36px;
   color: var(--text-primary);
   font-size: 0.9rem;
   min-width: 180px;
   cursor: pointer;
   transition: all var(--transition-fast);
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M2.5 4.5L6 8L9.5 4.5' stroke='%23aab6e6' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
 }
 
 .select:focus {
   outline: none;
   border-color: var(--blue-electric);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+.select option {
+  background-color: #1e1e2e;
+  color: #eaf0ff;
+  padding: 8px 12px;
 }
 
 /* Toggle Switch */
