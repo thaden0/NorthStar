@@ -7,6 +7,7 @@ import { DatabaseService } from '../database/database.service';
 import { AnalyticsService } from '../settings/analytics.service';
 import { SettingsService } from '../settings/settings.service';
 import { MemoryToolsService } from '../memory/memory-tools.service';
+import { PortfolioService } from '../tools/portfolio.service';
 import {
   AgentMessage,
   ChatRequest,
@@ -90,6 +91,8 @@ For emails, calendar events, and contact operations, the user will see a preview
 
 If a user cancels an action, acknowledge it gracefully and offer to help make changes.
 
+{PORTFOLIO_CONTEXT}
+
 {PROACTIVE_MEMORIES}`;
 
 
@@ -126,6 +129,7 @@ export class AgentService {
     private analyticsService: AnalyticsService,
     private settingsService: SettingsService,
     private memoryToolsService: MemoryToolsService,
+    private portfolioService: PortfolioService,
   ) {}
 
   async processChat(request: ChatRequest, authToken?: string, aiInstructions?: string): Promise<{ conversationId: string; emitter: EventEmitter }> {
@@ -241,12 +245,24 @@ When using these tools:
       userAiInstructionsSection = `\n=== USER CUSTOM INSTRUCTIONS ===\nThe user has provided the following custom instructions that you should follow:\n${context.aiInstructions}\n`;
     }
     
+    // Get portfolio context for AI to know about the user's professional info
+    let portfolioContext = '';
+    try {
+      portfolioContext = await this.portfolioService.getPortfolioContext();
+      if (portfolioContext) {
+        this.logger.debug('Injecting portfolio context into system prompt');
+      }
+    } catch (error) {
+      this.logger.warn(`Could not fetch portfolio context: ${error}`);
+    }
+    
     const systemPrompt = SYSTEM_PROMPT
       .replace('{CURRENT_TIME}', currentTime)
       .replace(new RegExp('\\{EXAMPLE_DATE\\}', 'g'), todayDate)
       .replace('{GOOGLE_STATUS}', googleStatus)
       .replace('{PROACTIVE_MEMORIES}', proactiveMemoriesContext)
-      .replace('{USER_AI_INSTRUCTIONS}', userAiInstructionsSection);
+      .replace('{USER_AI_INSTRUCTIONS}', userAiInstructionsSection)
+      .replace('{PORTFOLIO_CONTEXT}', portfolioContext);
 
     // Get tools in Ollama format for native tool calling
     const ollamaTools = this.toolExecutorService.getToolsForOllama();

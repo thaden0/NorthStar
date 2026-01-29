@@ -13,6 +13,7 @@ import { ClientsService } from './clients.service';
 import { NotificationsService } from './notifications.service';
 import { FilesService } from './files.service';
 import { ScheduledTasksService } from './scheduled-tasks.service';
+import { PortfolioService } from './portfolio.service';
 import { CronModule } from '../cron/cron.module';
 import { MemoryModule } from '../memory/memory.module';
 import { DatabaseModule } from '../database/database.module';
@@ -42,6 +43,7 @@ import { SettingsModule } from '../settings/settings.module';
     NotificationsService,
     FilesService,
     ScheduledTasksService,
+    PortfolioService,
   ],
   exports: [
     PlaywrightService,
@@ -57,6 +59,7 @@ import { SettingsModule } from '../settings/settings.module';
     NotificationsService,
     FilesService,
     ScheduledTasksService,
+    PortfolioService,
   ],
 })
 export class ToolsModule {}
