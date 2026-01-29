@@ -543,7 +543,30 @@ export async function createInvoiceAction(data: {
     where: { userId },
   });
   const prefix = settings?.invoicePrefix || 'INV-';
-  const nextNumber = settings?.nextInvoiceNumber || 1;
+  
+  // Find the next available invoice number by checking existing invoices
+  const existingInvoices = await db.invoice.findMany({
+    where: { 
+      userId,
+      invoiceNumber: { startsWith: prefix }
+    },
+    select: { invoiceNumber: true },
+    orderBy: { invoiceNumber: 'desc' },
+    take: 1,
+  });
+  
+  let nextNumber = settings?.nextInvoiceNumber || 1;
+  
+  // If there are existing invoices, extract the highest number and use the next one
+  if (existingInvoices.length > 0) {
+    const lastInvoiceNumber = existingInvoices[0].invoiceNumber;
+    const numberPart = lastInvoiceNumber.replace(prefix, '');
+    const lastNumber = parseInt(numberPart, 10);
+    if (!isNaN(lastNumber) && lastNumber >= nextNumber) {
+      nextNumber = lastNumber + 1;
+    }
+  }
+  
   const invoiceNumber = `${prefix}${String(nextNumber).padStart(4, '0')}`;
 
   // Get billable time entries for this client in the date range
