@@ -136,24 +136,25 @@ export class GoogleClientService {
   }> {
     this.logger.debug(`Getting user info with access token (first 20 chars): ${accessToken.substring(0, 20)}...`);
     
-    // Use direct fetch to avoid googleapis library issues
-    const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-      },
-    });
+    // Create a temporary OAuth2 client with the access token
+    const client = new google.auth.OAuth2(
+      this.configService.get<string>('GOOGLE_CLIENT_ID'),
+      this.configService.get<string>('GOOGLE_CLIENT_SECRET'),
+    );
+    client.setCredentials({ access_token: accessToken });
     
-    if (!response.ok) {
-      const errorText = await response.text();
-      this.logger.error(`Failed to get user info: ${response.status} ${errorText}`);
-      throw new Error(`Failed to get user info: ${response.status} ${errorText}`);
+    // Use the googleapis library
+    const oauth2 = google.oauth2({ version: 'v2', auth: client });
+    const { data } = await oauth2.userinfo.get();
+    
+    if (!data.email) {
+      throw new Error('Failed to get user email from Google');
     }
     
-    const data = await response.json();
     this.logger.debug(`Got user info for: ${data.email}`);
     
     return {
-      id: data.id,
+      id: data.id || '',
       email: data.email,
       name: data.name || undefined,
       picture: data.picture || undefined,
