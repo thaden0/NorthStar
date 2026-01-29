@@ -464,7 +464,7 @@ export async function updateInvoiceSettingsAction(formData: FormData): Promise<A
   if (!authResult.success) return authResult;
   const { userId } = authResult;
 
-  const data = {
+  const data: Record<string, unknown> = {
     businessName: (formData.get('businessName') as string) || null,
     businessEmail: (formData.get('businessEmail') as string) || null,
     businessPhone: (formData.get('businessPhone') as string) || null,
@@ -475,6 +475,15 @@ export async function updateInvoiceSettingsAction(formData: FormData): Promise<A
     defaultNotes: (formData.get('defaultNotes') as string) || null,
     invoicePrefix: (formData.get('invoicePrefix') as string) || 'INV-',
   };
+
+  // Only update nextInvoiceNumber if explicitly provided
+  const nextInvoiceNumberStr = formData.get('nextInvoiceNumber') as string;
+  if (nextInvoiceNumberStr) {
+    const nextInvoiceNumber = parseInt(nextInvoiceNumberStr);
+    if (!isNaN(nextInvoiceNumber) && nextInvoiceNumber >= 1) {
+      data.nextInvoiceNumber = nextInvoiceNumber;
+    }
+  }
 
   const settings = await db.invoiceSettings.upsert({
     where: { userId },
@@ -521,12 +530,12 @@ export async function createInvoiceAction(data: {
   const nextNumber = settings?.nextInvoiceNumber || 1;
   const invoiceNumber = `${prefix}${String(nextNumber).padStart(4, '0')}`;
 
-  // Get unbilled time entries for this client in the date range
+  // Get billable time entries for this client in the date range
+  // Note: entries can be invoiced multiple times, so we don't filter by invoiced status
   const timeEntries = await db.timeEntry.findMany({
     where: {
       userId,
       clientId: data.clientId,
-      invoiced: false,
       billable: true,
       startTimeUtc: {
         gte: data.startDate,
@@ -636,11 +645,7 @@ export async function createInvoiceAction(data: {
 
     console.log('[createInvoiceAction] Invoice created successfully:', invoice.id);
 
-    // Mark time entries as invoiced
-    await db.timeEntry.updateMany({
-      where: { id: { in: timeEntries.map(e => e.id) } },
-      data: { invoiced: true, invoiceId: invoice.id },
-    });
+    // Note: We no longer mark time entries as invoiced, allowing them to be invoiced multiple times
 
     // Increment invoice number
     await db.invoiceSettings.update({

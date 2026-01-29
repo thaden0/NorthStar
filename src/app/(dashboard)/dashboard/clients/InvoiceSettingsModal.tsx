@@ -46,6 +46,7 @@ export default function InvoiceSettingsModal({ onClose }: InvoiceSettingsModalPr
       if (settings.defaultPaymentTerms) formData.set('defaultPaymentTerms', settings.defaultPaymentTerms);
       if (settings.defaultNotes) formData.set('defaultNotes', settings.defaultNotes);
       if (settings.invoicePrefix) formData.set('invoicePrefix', settings.invoicePrefix);
+      if (settings.nextInvoiceNumber !== undefined) formData.set('nextInvoiceNumber', settings.nextInvoiceNumber.toString());
 
       const result = await updateInvoiceSettingsAction(formData);
       if (result.success) {
@@ -148,6 +149,16 @@ export default function InvoiceSettingsModal({ onClose }: InvoiceSettingsModalPr
                 className={styles.input}
                 value={settings.invoicePrefix || 'INV-'}
                 onChange={(e) => setSettings({ ...settings, invoicePrefix: e.target.value })}
+              />
+            </div>
+            <div className={styles.formGroup}>
+              <label className={styles.label}>Next Invoice #</label>
+              <input
+                type="number"
+                className={styles.input}
+                value={settings.nextInvoiceNumber || 1}
+                onChange={(e) => setSettings({ ...settings, nextInvoiceNumber: parseInt(e.target.value) || 1 })}
+                min="1"
               />
             </div>
             <div className={styles.formGroup}>
