@@ -8,6 +8,9 @@ import { WikipediaService } from './wikipedia.service';
 import { RedditService } from './reddit.service';
 import { BackgroundAgentService } from './background-agent.service';
 import { TimeTrackingService } from './time-tracking.service';
+import { ClientsService } from './clients.service';
+import { NotificationsService } from './notifications.service';
+import { FilesService } from './files.service';
 import { ParsedToolCall } from './tool-parser.service';
 
 /**
@@ -79,6 +82,9 @@ export class ToolExecutorService {
     @Inject(forwardRef(() => BackgroundAgentService))
     private backgroundAgentService: BackgroundAgentService,
     private timeTrackingService: TimeTrackingService,
+    private clientsService: ClientsService,
+    private notificationsService: NotificationsService,
+    private filesService: FilesService,
   ) {
     this.registerDefaultTools();
     this.registerMemoryTools();
@@ -86,6 +92,9 @@ export class ToolExecutorService {
     this.registerRedditTools();
     this.registerBackgroundTools();
     this.registerTimeTrackingTools();
+    this.registerClientTools();
+    this.registerNotificationTools();
+    this.registerFileTools();
   }
 
   /**
@@ -1107,4 +1116,507 @@ export class ToolExecutorService {
     
     return results;
   }
+
+  /**
+   * Register client management tools
+   */
+  private registerClientTools(): void {
+    // Get all clients
+    this.registerTool({
+      name: 'get_clients_list',
+      description: 'Get the list of all clients with their details, including projects and time entry counts.',
+      parameters: {},
+      execute: async (args, context) => {
+        context.onStatus?.('Fetching clients...');
+        
+        const result = await this.clientsService.getClients(context.userId, context.authToken);
+        
+        if (!result.success) {
+          return { success: false, error: result.error, summary: `Failed: ${result.error}` };
+        }
+        
+        return {
+          success: true,
+          data: {
+            clientCount: result.data?.length || 0,
+            clients: result.data?.map(c => ({
+              id: c.id,
+              name: c.name,
+              email: c.email,
+              phone: c.phone,
+              hourlyRate: c.hourlyRate,
+              color: c.color,
+              isActive: c.isActive,
+            })),
+          },
+          summary: `Found ${result.data?.length || 0} clients`,
+        };
+      },
+    });
+
+    // Get a single client
+    this.registerTool({
+      name: 'get_client',
+      description: 'Get detailed information about a specific client by ID.',
+      parameters: {
+        clientId: { type: 'string', description: 'The ID of the client to retrieve', required: true },
+      },
+      execute: async (args, context) => {
+        const clientId = args.clientId as string;
+        context.onStatus?.(`Fetching client ${clientId}...`);
+        
+        const result = await this.clientsService.getClient(context.userId, clientId, context.authToken);
+        
+        if (!result.success) {
+          return { success: false, error: result.error, summary: `Failed: ${result.error}` };
+        }
+        
+        return {
+          success: true,
+          data: result.data,
+          summary: `Retrieved client: ${result.data?.name}`,
+        };
+      },
+    });
+
+    // Create a client
+    this.registerTool({
+      name: 'create_client',
+      description: 'Create a new client in the system.',
+      parameters: {
+        name: { type: 'string', description: 'Client name', required: true },
+        email: { type: 'string', description: 'Client email address' },
+        phone: { type: 'string', description: 'Client phone number' },
+        address: { type: 'string', description: 'Client address' },
+        notes: { type: 'string', description: 'Notes about the client' },
+        hourlyRate: { type: 'number', description: 'Hourly billing rate for this client' },
+        color: { type: 'string', description: 'Hex color for UI display (e.g., "#3b82f6")' },
+      },
+      execute: async (args, context) => {
+        context.onStatus?.('Creating client...');
+        
+        const result = await this.clientsService.createClient(
+          context.userId,
+          {
+            name: args.name as string,
+            email: args.email as string,
+            phone: args.phone as string,
+            address: args.address as string,
+            notes: args.notes as string,
+            hourlyRate: args.hourlyRate as number,
+            color: args.color as string,
+          },
+          context.authToken
+        );
+        
+        if (!result.success) {
+          return { success: false, error: result.error, summary: `Failed: ${result.error}` };
+        }
+        
+        return {
+          success: true,
+          data: result.data,
+          summary: `Created client: ${result.data?.name}`,
+        };
+      },
+    });
+
+    // Update a client
+    this.registerTool({
+      name: 'update_client',
+      description: 'Update an existing client\'s information.',
+      parameters: {
+        clientId: { type: 'string', description: 'The ID of the client to update', required: true },
+        name: { type: 'string', description: 'New client name' },
+        email: { type: 'string', description: 'New email address' },
+        phone: { type: 'string', description: 'New phone number' },
+        address: { type: 'string', description: 'New address' },
+        notes: { type: 'string', description: 'New notes' },
+        hourlyRate: { type: 'number', description: 'New hourly rate' },
+        color: { type: 'string', description: 'New color' },
+        isActive: { type: 'boolean', description: 'Whether the client is active' },
+      },
+      execute: async (args, context) => {
+        const clientId = args.clientId as string;
+        context.onStatus?.(`Updating client ${clientId}...`);
+        
+        const updateParams: Record<string, unknown> = {};
+        if (args.name !== undefined) updateParams.name = args.name;
+        if (args.email !== undefined) updateParams.email = args.email;
+        if (args.phone !== undefined) updateParams.phone = args.phone;
+        if (args.address !== undefined) updateParams.address = args.address;
+        if (args.notes !== undefined) updateParams.notes = args.notes;
+        if (args.hourlyRate !== undefined) updateParams.hourlyRate = args.hourlyRate;
+        if (args.color !== undefined) updateParams.color = args.color;
+        if (args.isActive !== undefined) updateParams.isActive = args.isActive;
+        
+        const result = await this.clientsService.updateClient(
+          context.userId,
+          clientId,
+          updateParams as { name?: string },
+          context.authToken
+        );
+        
+        if (!result.success) {
+          return { success: false, error: result.error, summary: `Failed: ${result.error}` };
+        }
+        
+        return {
+          success: true,
+          data: result.data,
+          summary: `Updated client: ${result.data?.name}`,
+        };
+      },
+    });
+
+    // Delete a client
+    this.registerTool({
+      name: 'delete_client',
+      description: 'Delete a client from the system. This will also remove associated projects.',
+      parameters: {
+        clientId: { type: 'string', description: 'The ID of the client to delete', required: true },
+      },
+      execute: async (args, context) => {
+        const clientId = args.clientId as string;
+        context.onStatus?.(`Deleting client ${clientId}...`);
+        
+        const result = await this.clientsService.deleteClient(context.userId, clientId, context.authToken);
+        
+        if (!result.success) {
+          return { success: false, error: result.error, summary: `Failed: ${result.error}` };
+        }
+        
+        return {
+          success: true,
+          summary: `Deleted client ${clientId}`,
+        };
+      },
+    });
+  }
+
+  /**
+   * Register notification tools
+   */
+  private registerNotificationTools(): void {
+    // Get notifications
+    this.registerTool({
+      name: 'get_notifications',
+      description: 'Get the user\'s notifications. Can filter to unread only.',
+      parameters: {
+        limit: { type: 'number', description: 'Maximum number of notifications to return (default: 20)' },
+        unreadOnly: { type: 'boolean', description: 'Only return unread notifications' },
+      },
+      execute: async (args, context) => {
+        context.onStatus?.('Fetching notifications...');
+        
+        const result = await this.notificationsService.getNotifications(
+          context.userId,
+          {
+            limit: args.limit as number,
+            unreadOnly: args.unreadOnly as boolean,
+          },
+          context.authToken
+        );
+        
+        if (!result.success) {
+          return { success: false, error: result.error, summary: `Failed: ${result.error}` };
+        }
+        
+        return {
+          success: true,
+          data: {
+            count: result.data?.length || 0,
+            unreadCount: result.unreadCount || 0,
+            notifications: result.data?.map(n => ({
+              id: n.id,
+              type: n.type,
+              title: n.title,
+              message: n.message,
+              read: n.read,
+              createdAt: n.createdAt,
+            })),
+          },
+          summary: `Found ${result.data?.length || 0} notifications (${result.unreadCount || 0} unread)`,
+        };
+      },
+    });
+
+    // Create a notification
+    this.registerTool({
+      name: 'create_notification',
+      description: 'Create a new notification for the user. Use this to alert the user about something important.',
+      parameters: {
+        type: { type: 'string', description: 'Notification type: "info", "alert", "system", "cron_result", "cron_error"', required: true },
+        title: { type: 'string', description: 'Notification title', required: true },
+        message: { type: 'string', description: 'Notification message body', required: true },
+      },
+      execute: async (args, context) => {
+        context.onStatus?.('Creating notification...');
+        
+        const result = await this.notificationsService.createNotification(
+          context.userId,
+          {
+            type: args.type as string,
+            title: args.title as string,
+            message: args.message as string,
+          },
+          context.authToken
+        );
+        
+        if (!result.success) {
+          return { success: false, error: result.error, summary: `Failed: ${result.error}` };
+        }
+        
+        return {
+          success: true,
+          data: result.data,
+          summary: `Created notification: ${args.title}`,
+        };
+      },
+    });
+
+    // Mark notification as read
+    this.registerTool({
+      name: 'mark_notification_read',
+      description: 'Mark a notification as read.',
+      parameters: {
+        notificationId: { type: 'string', description: 'The ID of the notification to mark as read', required: true },
+      },
+      execute: async (args, context) => {
+        const notificationId = args.notificationId as string;
+        context.onStatus?.('Marking notification as read...');
+        
+        const result = await this.notificationsService.updateNotification(
+          context.userId,
+          notificationId,
+          { read: true },
+          context.authToken
+        );
+        
+        if (!result.success) {
+          return { success: false, error: result.error, summary: `Failed: ${result.error}` };
+        }
+        
+        return {
+          success: true,
+          summary: `Marked notification ${notificationId} as read`,
+        };
+      },
+    });
+
+    // Delete a notification
+    this.registerTool({
+      name: 'delete_notification',
+      description: 'Delete a notification.',
+      parameters: {
+        notificationId: { type: 'string', description: 'The ID of the notification to delete', required: true },
+      },
+      execute: async (args, context) => {
+        const notificationId = args.notificationId as string;
+        context.onStatus?.('Deleting notification...');
+        
+        const result = await this.notificationsService.deleteNotification(
+          context.userId,
+          notificationId,
+          context.authToken
+        );
+        
+        if (!result.success) {
+          return { success: false, error: result.error, summary: `Failed: ${result.error}` };
+        }
+        
+        return {
+          success: true,
+          summary: `Deleted notification ${notificationId}`,
+        };
+      },
+    });
+
+    // Mark all as read
+    this.registerTool({
+      name: 'mark_all_notifications_read',
+      description: 'Mark all notifications as read.',
+      parameters: {},
+      execute: async (args, context) => {
+        context.onStatus?.('Marking all notifications as read...');
+        
+        const result = await this.notificationsService.markAllAsRead(context.userId, context.authToken);
+        
+        if (!result.success) {
+          return { success: false, error: result.error, summary: `Failed: ${result.error}` };
+        }
+        
+        return {
+          success: true,
+          summary: 'Marked all notifications as read',
+        };
+      },
+    });
+  }
+
+  /**
+   * Register file management tools
+   */
+  private registerFileTools(): void {
+    // Get files
+    this.registerTool({
+      name: 'get_files',
+      description: 'Get the list of files uploaded by the user.',
+      parameters: {
+        type: { type: 'string', description: 'Filter by file type (e.g., "image", "pdf")' },
+        limit: { type: 'number', description: 'Maximum number of files to return (default: 50)' },
+      },
+      execute: async (args, context) => {
+        context.onStatus?.('Fetching files...');
+        
+        const result = await this.filesService.getFiles(
+          context.userId,
+          {
+            type: args.type as string,
+            limit: args.limit as number,
+          },
+          context.authToken
+        );
+        
+        if (!result.success) {
+          return { success: false, error: result.error, summary: `Failed: ${result.error}` };
+        }
+        
+        return {
+          success: true,
+          data: {
+            count: result.data?.length || 0,
+            files: result.data?.map(f => ({
+              id: f.id,
+              name: f.name,
+              type: f.type,
+              size: f.size,
+              url: f.url,
+              createdAt: f.createdAt,
+            })),
+          },
+          summary: `Found ${result.data?.length || 0} files`,
+        };
+      },
+    });
+
+    // Get a single file
+    this.registerTool({
+      name: 'get_file',
+      description: 'Get details about a specific file.',
+      parameters: {
+        fileId: { type: 'string', description: 'The ID of the file to retrieve', required: true },
+      },
+      execute: async (args, context) => {
+        const fileId = args.fileId as string;
+        context.onStatus?.(`Fetching file ${fileId}...`);
+        
+        const result = await this.filesService.getFile(context.userId, fileId, context.authToken);
+        
+        if (!result.success) {
+          return { success: false, error: result.error, summary: `Failed: ${result.error}` };
+        }
+        
+        return {
+          success: true,
+          data: result.data,
+          summary: `Retrieved file: ${result.data?.name}`,
+        };
+      },
+    });
+
+    // Create a file record
+    this.registerTool({
+      name: 'create_file_record',
+      description: 'Create a file record in the database. This is used after uploading a file to storage.',
+      parameters: {
+        name: { type: 'string', description: 'File name', required: true },
+        key: { type: 'string', description: 'Storage key/path', required: true },
+        url: { type: 'string', description: 'Public URL to access the file', required: true },
+        size: { type: 'number', description: 'File size in bytes', required: true },
+        type: { type: 'string', description: 'MIME type of the file', required: true },
+      },
+      execute: async (args, context) => {
+        context.onStatus?.('Creating file record...');
+        
+        const result = await this.filesService.createFile(
+          context.userId,
+          {
+            name: args.name as string,
+            key: args.key as string,
+            url: args.url as string,
+            size: args.size as number,
+            type: args.type as string,
+          },
+          context.authToken
+        );
+        
+        if (!result.success) {
+          return { success: false, error: result.error, summary: `Failed: ${result.error}` };
+        }
+        
+        return {
+          success: true,
+          data: result.data,
+          summary: `Created file record: ${result.data?.name}`,
+        };
+      },
+    });
+
+    // Update a file record
+    this.registerTool({
+      name: 'update_file',
+      description: 'Update a file record (e.g., rename the file).',
+      parameters: {
+        fileId: { type: 'string', description: 'The ID of the file to update', required: true },
+        name: { type: 'string', description: 'New file name' },
+      },
+      execute: async (args, context) => {
+        const fileId = args.fileId as string;
+        context.onStatus?.(`Updating file ${fileId}...`);
+        
+        const result = await this.filesService.updateFile(
+          context.userId,
+          fileId,
+          { name: args.name as string },
+          context.authToken
+        );
+        
+        if (!result.success) {
+          return { success: false, error: result.error, summary: `Failed: ${result.error}` };
+        }
+        
+        return {
+          success: true,
+          data: result.data,
+          summary: `Updated file: ${result.data?.name}`,
+        };
+      },
+    });
+
+    // Delete a file record
+    this.registerTool({
+      name: 'delete_file',
+      description: 'Delete a file record. Note: This only removes the database record, not the actual file from storage.',
+      parameters: {
+        fileId: { type: 'string', description: 'The ID of the file to delete', required: true },
+      },
+      execute: async (args, context) => {
+        const fileId = args.fileId as string;
+        context.onStatus?.(`Deleting file ${fileId}...`);
+        
+        const result = await this.filesService.deleteFile(context.userId, fileId, context.authToken);
+        
+        if (!result.success) {
+          return { success: false, error: result.error, summary: `Failed: ${result.error}` };
+        }
+        
+        return {
+          success: true,
+          summary: `Deleted file ${fileId}`,
+        };
+      },
+    });
+  }
 }
+
