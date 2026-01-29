@@ -250,18 +250,23 @@
   border-radius: var(--radius-sm);
   padding: var(--space-1) var(--space-2);
   font-size: 0.75rem;
-  cursor: pointer;
+  cursor: grab;
   overflow: hidden;
-  transition: box-shadow var(--transition-fast);
+  transition: box-shadow var(--transition-fast), opacity var(--transition-fast);
   z-index: 1;
   display: flex;
   flex-direction: column;
   gap: 2px;
+  user-select: none;
 }
 
 .timeBlock:hover {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   z-index: 2;
+}
+
+.timeBlock:active {
+  cursor: grabbing;
 }
 
 .timeBlockTime {
@@ -286,19 +291,26 @@
 }
 
 .timeBlockDragging {
-  opacity: 0.7;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-  z-index: 100;
+  opacity: 0.5;
+  z-index: 0;
 }
 
 /* Resize handles */
-.resizeHandle {
+.resizeHandleTop,
+.resizeHandleBottom {
   position: absolute;
   left: 0;
   right: 0;
   height: 8px;
   cursor: ns-resize;
   z-index: 3;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.timeBlock:hover .resizeHandleTop,
+.timeBlock:hover .resizeHandleBottom {
+  opacity: 1;
 }
 
 .resizeHandleTop {
@@ -309,14 +321,15 @@
   bottom: 0;
 }
 
-.resizeHandle::after {
+.resizeHandleTop::after,
+.resizeHandleBottom::after {
   content: '';
   position: absolute;
   left: 30%;
   right: 30%;
-  height: 2px;
-  background: rgba(255, 255, 255, 0.3);
-  border-radius: 1px;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 2px;
 }
 
 .resizeHandleTop::after {
@@ -327,7 +340,29 @@
   bottom: 2px;
 }
 
-/* Creating indicator */
+/* Preview block (creating/moving/resizing) */
+.previewBlock {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  background: rgba(59, 130, 246, 0.3);
+  border: 2px dashed var(--blue-electric);
+  border-radius: var(--radius-sm);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.previewBlockContent {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--blue-ice);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* Legacy creating slot (for backwards compatibility) */
 .creatingSlot {
   position: absolute;
   left: 2px;
@@ -509,6 +544,12 @@
   background-repeat: no-repeat;
   background-position: right 12px center;
   padding-right: 36px;
+}
+
+.select option {
+  background: #1a1f35;
+  color: #e2e8f0;
+  padding: 8px;
 }
 
 .textarea {

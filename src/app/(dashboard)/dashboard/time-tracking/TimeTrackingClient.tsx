@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { format, addDays, isToday, isSameDay, getHours, getMinutes, addMinutes } from 'date-fns';
+import { format, addDays, isToday, isSameDay, getHours, getMinutes } from 'date-fns';
 import { toZonedTime, fromZonedTime } from 'date-fns-tz';
-import { FiChevronLeft, FiChevronRight, FiFileText, FiX, FiPlus, FiTrash2 } from 'react-icons/fi';
+import { FiChevronLeft, FiChevronRight, FiFileText, FiX, FiTrash2 } from 'react-icons/fi';
 import { toast } from 'sonner';
-import { useTimeTrackingStore, getWeekRange, toTimeBlock } from '@/stores/timeTracking-store';
+import { useTimeTrackingStore } from '@/stores/timeTracking-store';
 import {
   getTimeEntriesAction,
   createTimeEntryAction,
@@ -22,12 +22,25 @@ interface TimeTrackingClientProps {
   initialProjects: ClientProject[];
 }
 
+type DragMode = 'none' | 'create' | 'move' | 'resize-top' | 'resize-bottom';
+
+interface DragState {
+  mode: DragMode;
+  entryId?: string;
+  dayIndex: number;
+  startY: number;
+  startMinutes: number;
+  endMinutes: number;
+  originalStart?: number;
+  originalEnd?: number;
+  originalDay?: number;
+}
+
 export default function TimeTrackingClient({ initialClients, initialProjects }: TimeTrackingClientProps) {
   const {
     clients,
     projects,
     currentWeek,
-    timeBlocks,
     selectedEntry,
     isEntryModalOpen,
     isInvoiceModalOpen,
@@ -44,14 +57,12 @@ export default function TimeTrackingClient({ initialClients, initialProjects }: 
     getEntriesForWeek,
   } = useTimeTrackingStore();
 
-  const [isLoading, setIsLoading] = useState(true);
-  const [isDragging, setIsDragging] = useState(false);
-  const [isCreating, setIsCreating] = useState(false);
-  const [creatingSlot, setCreatingSlot] = useState<{ day: number; startMinutes: number; endMinutes: number } | null>(null);
-  const [dragStartY, setDragStartY] = useState(0);
-  const [dragDay, setDragDay] = useState(0);
+  const [, setIsLoading] = useState(true);
+  const [dragState, setDragState] = useState<DragState | null>(null);
+  const [previewBlock, setPreviewBlock] = useState<{ day: number; startMinutes: number; endMinutes: number } | null>(null);
   
   const calendarRef = useRef<HTMLDivElement>(null);
+  const dayColumnsRef = useRef<HTMLDivElement[]>([]);
 
   // Initialize data
   useEffect(() => {
@@ -94,86 +105,213 @@ export default function TimeTrackingClient({ initialClients, initialProjects }: 
     entry.billable ? sum + entry.durationMinutes / 60 : sum, 0
   );
 
-  // Snap Y position to 15-minute increments
-  const snapToQuarter = (y: number): number => {
+  // Convert Y position to minutes, snapped to 15-minute increments
+  const yToMinutes = (y: number): number => {
     const minutesPerPixel = 60 / HOUR_HEIGHT;
     const minutes = y * minutesPerPixel;
     const snappedMinutes = Math.round(minutes / SNAP_MINUTES) * SNAP_MINUTES;
-    return snappedMinutes;
+    return Math.max(0, Math.min(snappedMinutes, 24 * 60));
   };
 
-  // Handle mouse down on calendar (start creating)
-  const handleMouseDown = (e: React.MouseEvent, dayIndex: number) => {
-    if (isDragging) return;
+  // Get current day index from mouse X position
+  const getDayIndexFromX = (clientX: number): number => {
+    for (let i = 0; i < dayColumnsRef.current.length; i++) {
+      const col = dayColumnsRef.current[i];
+      if (col) {
+        const rect = col.getBoundingClientRect();
+        if (clientX >= rect.left && clientX <= rect.right) {
+          return i;
+        }
+      }
+    }
+    return dragState?.dayIndex ?? 0;
+  };
+
+  // Handle mouse down on empty calendar space (start creating)
+  const handleColumnMouseDown = (e: React.MouseEvent, dayIndex: number) => {
+    // Only create if clicking directly on the column, not on a time block
+    if ((e.target as HTMLElement).closest(`.${styles.timeBlock}`)) {
+      return;
+    }
     
     const rect = e.currentTarget.getBoundingClientRect();
     const y = e.clientY - rect.top;
-    const startMinutes = snapToQuarter(y);
+    const startMinutes = yToMinutes(y);
     
-    setIsCreating(true);
-    setDragStartY(y);
-    setDragDay(dayIndex);
-    setCreatingSlot({
+    setDragState({
+      mode: 'create',
+      dayIndex,
+      startY: y,
+      startMinutes,
+      endMinutes: startMinutes + SNAP_MINUTES,
+    });
+    setPreviewBlock({
       day: dayIndex,
       startMinutes,
       endMinutes: startMinutes + SNAP_MINUTES,
     });
+    
+    e.preventDefault();
   };
 
-  // Handle mouse move while creating
+  // Handle mouse down on a time block (start moving)
+  const handleBlockMouseDown = (e: React.MouseEvent, entry: TimeBlock) => {
+    e.stopPropagation();
+    e.preventDefault();
+    
+    const target = e.target as HTMLElement;
+    const blockElement = target.closest(`.${styles.timeBlock}`) as HTMLElement;
+    if (!blockElement) return;
+    
+    const blockRect = blockElement.getBoundingClientRect();
+    const clickY = e.clientY - blockRect.top;
+    const blockHeight = blockRect.height;
+    
+    // Determine if clicking on resize handle (top/bottom 8px)
+    const RESIZE_ZONE = 8;
+    
+    let mode: DragMode = 'move';
+    if (clickY <= RESIZE_ZONE) {
+      mode = 'resize-top';
+    } else if (clickY >= blockHeight - RESIZE_ZONE) {
+      mode = 'resize-bottom';
+    }
+    
+    const colElement = dayColumnsRef.current[entry.dayOfWeek];
+    const colRect = colElement?.getBoundingClientRect();
+    const y = colRect ? e.clientY - colRect.top : 0;
+    
+    setDragState({
+      mode,
+      entryId: entry.id,
+      dayIndex: entry.dayOfWeek,
+      startY: y,
+      startMinutes: entry.startMinutes,
+      endMinutes: entry.startMinutes + entry.durationMinutes,
+      originalStart: entry.startMinutes,
+      originalEnd: entry.startMinutes + entry.durationMinutes,
+      originalDay: entry.dayOfWeek,
+    });
+    
+    setPreviewBlock({
+      day: entry.dayOfWeek,
+      startMinutes: entry.startMinutes,
+      endMinutes: entry.startMinutes + entry.durationMinutes,
+    });
+  };
+
+  // Handle global mouse move
   const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!isCreating || !calendarRef.current) return;
+    if (!dragState || !calendarRef.current) return;
     
-    const dayColumns = calendarRef.current.querySelectorAll('[data-day-column]');
-    const dayColumn = dayColumns[dragDay] as HTMLElement;
-    if (!dayColumn) return;
+    const { mode, dayIndex, startY, originalStart, originalEnd } = dragState;
     
-    const rect = dayColumn.getBoundingClientRect();
-    const y = e.clientY - rect.top;
-    const currentMinutes = snapToQuarter(y);
+    const colElement = dayColumnsRef.current[dayIndex];
+    if (!colElement) return;
     
-    if (creatingSlot) {
-      const startMinutes = snapToQuarter(dragStartY / HOUR_HEIGHT * 60);
-      if (currentMinutes > startMinutes) {
-        setCreatingSlot({
-          day: dragDay,
-          startMinutes,
+    const colRect = colElement.getBoundingClientRect();
+    const currentY = e.clientY - colRect.top;
+    const currentMinutes = yToMinutes(currentY);
+    
+    if (mode === 'create') {
+      const dragStartMinutes = yToMinutes(startY);
+      if (currentMinutes > dragStartMinutes) {
+        setPreviewBlock({
+          day: dayIndex,
+          startMinutes: dragStartMinutes,
           endMinutes: currentMinutes,
         });
       } else {
-        setCreatingSlot({
-          day: dragDay,
+        setPreviewBlock({
+          day: dayIndex,
           startMinutes: currentMinutes,
-          endMinutes: startMinutes,
+          endMinutes: dragStartMinutes,
         });
       }
+    } else if (mode === 'move' && originalStart !== undefined && originalEnd !== undefined) {
+      const deltaMinutes = currentMinutes - yToMinutes(startY);
+      const duration = originalEnd - originalStart;
+      let newStart = originalStart + deltaMinutes;
+      let newEnd = newStart + duration;
+      
+      // Clamp to day boundaries
+      if (newStart < 0) {
+        newStart = 0;
+        newEnd = duration;
+      }
+      if (newEnd > 24 * 60) {
+        newEnd = 24 * 60;
+        newStart = newEnd - duration;
+      }
+      
+      // Check if we moved to a different day
+      const newDayIndex = getDayIndexFromX(e.clientX);
+      
+      setDragState(prev => prev ? { ...prev, dayIndex: newDayIndex } : null);
+      setPreviewBlock({
+        day: newDayIndex,
+        startMinutes: newStart,
+        endMinutes: newEnd,
+      });
+    } else if (mode === 'resize-top' && originalEnd !== undefined) {
+      let newStart = currentMinutes;
+      const minDuration = SNAP_MINUTES;
+      
+      // Don't allow resizing past end time
+      if (newStart >= originalEnd - minDuration) {
+        newStart = originalEnd - minDuration;
+      }
+      if (newStart < 0) newStart = 0;
+      
+      setPreviewBlock({
+        day: dayIndex,
+        startMinutes: newStart,
+        endMinutes: originalEnd,
+      });
+    } else if (mode === 'resize-bottom' && originalStart !== undefined) {
+      let newEnd = currentMinutes;
+      const minDuration = SNAP_MINUTES;
+      
+      // Don't allow resizing past start time
+      if (newEnd <= originalStart + minDuration) {
+        newEnd = originalStart + minDuration;
+      }
+      if (newEnd > 24 * 60) newEnd = 24 * 60;
+      
+      setPreviewBlock({
+        day: dayIndex,
+        startMinutes: originalStart,
+        endMinutes: newEnd,
+      });
     }
-  }, [isCreating, dragDay, dragStartY, creatingSlot]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dragState, getDayIndexFromX]);
 
-  // Handle mouse up (finish creating)
+  // Handle global mouse up
   const handleMouseUp = useCallback(async () => {
-    if (!isCreating || !creatingSlot) {
-      setIsCreating(false);
-      setCreatingSlot(null);
+    if (!dragState || !previewBlock) {
+      setDragState(null);
+      setPreviewBlock(null);
       return;
     }
     
-    setIsCreating(false);
+    const { mode, entryId } = dragState;
+    const { day, startMinutes, endMinutes } = previewBlock;
     
     // Minimum 15 minutes
-    if (creatingSlot.endMinutes - creatingSlot.startMinutes < SNAP_MINUTES) {
-      setCreatingSlot(null);
+    if (endMinutes - startMinutes < SNAP_MINUTES) {
+      setDragState(null);
+      setPreviewBlock(null);
       return;
     }
     
     // Calculate UTC times
-    const dayDate = addDays(currentWeek.start, creatingSlot.day);
-    const startHours = Math.floor(creatingSlot.startMinutes / 60);
-    const startMins = creatingSlot.startMinutes % 60;
-    const endHours = Math.floor(creatingSlot.endMinutes / 60);
-    const endMins = creatingSlot.endMinutes % 60;
+    const dayDate = addDays(currentWeek.start, day);
+    const startHours = Math.floor(startMinutes / 60);
+    const startMins = startMinutes % 60;
+    const endHours = Math.floor(endMinutes / 60);
+    const endMins = endMinutes % 60;
     
-    // Create date in Eastern time, then convert to UTC
     const startLocal = new Date(dayDate);
     startLocal.setHours(startHours, startMins, 0, 0);
     const endLocal = new Date(dayDate);
@@ -183,43 +321,64 @@ export default function TimeTrackingClient({ initialClients, initialProjects }: 
     const endUtc = fromZonedTime(endLocal, DISPLAY_TIMEZONE);
     
     try {
-      const result = await createTimeEntryAction({
-        startTimeUtc: startUtc,
-        endTimeUtc: endUtc,
-        billable: true,
-      });
-      
-      if (result.success && result.data) {
-        const entry = result.data as TimeEntry;
-        useTimeTrackingStore.getState().addTimeEntry(entry);
-        openEntryModal(entry);
-        toast.success('Time block created');
-      } else {
-        toast.error(result.error || 'Failed to create time block');
+      if (mode === 'create') {
+        const result = await createTimeEntryAction({
+          startTimeUtc: startUtc,
+          endTimeUtc: endUtc,
+          billable: true,
+        });
+        
+        if (result.success && result.data) {
+          const entry = result.data as TimeEntry;
+          useTimeTrackingStore.getState().addTimeEntry(entry);
+          openEntryModal(entry);
+          toast.success('Time block created');
+        } else {
+          toast.error(result.error || 'Failed to create time block');
+        }
+      } else if ((mode === 'move' || mode === 'resize-top' || mode === 'resize-bottom') && entryId) {
+        const result = await updateTimeEntryAction(entryId, {
+          startTimeUtc: startUtc,
+          endTimeUtc: endUtc,
+        });
+        
+        if (result.success && result.data) {
+          useTimeTrackingStore.getState().updateTimeEntry(entryId, result.data as Partial<TimeEntry>);
+          toast.success('Time block updated');
+        } else {
+          toast.error(result.error || 'Failed to update time block');
+        }
       }
     } catch (error) {
-      console.error('Failed to create time entry:', error);
-      toast.error('Failed to create time block');
+      console.error('Failed to save time entry:', error);
+      toast.error('Failed to save time block');
     }
     
-    setCreatingSlot(null);
-  }, [isCreating, creatingSlot, currentWeek.start, openEntryModal]);
+    setDragState(null);
+    setPreviewBlock(null);
+  }, [dragState, previewBlock, currentWeek.start, openEntryModal]);
 
-  // Add global mouse listeners for creating
+  // Add global mouse listeners
   useEffect(() => {
-    if (isCreating) {
+    if (dragState) {
       window.addEventListener('mousemove', handleMouseMove);
       window.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = dragState.mode === 'move' ? 'grabbing' : 
+        (dragState.mode === 'resize-top' || dragState.mode === 'resize-bottom') ? 'ns-resize' : 'crosshair';
+      document.body.style.userSelect = 'none';
     }
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
     };
-  }, [isCreating, handleMouseMove, handleMouseUp]);
+  }, [dragState, handleMouseMove, handleMouseUp]);
 
-  // Handle time block click
-  const handleBlockClick = (entry: TimeEntry, e: React.MouseEvent) => {
+  // Handle time block double-click to open edit modal
+  const handleBlockDoubleClick = (entry: TimeEntry, e: React.MouseEvent) => {
     e.stopPropagation();
+    e.preventDefault();
     openEntryModal(entry);
   };
 
@@ -229,7 +388,6 @@ export default function TimeTrackingClient({ initialClients, initialProjects }: 
     const jsDay = now.getDay();
     const dayIndex = jsDay === 0 ? 6 : jsDay - 1;
     
-    // Check if current day is in the current week
     const dayDate = addDays(currentWeek.start, dayIndex);
     if (!isSameDay(dayDate, toZonedTime(new Date(), DISPLAY_TIMEZONE))) {
       return null;
@@ -245,6 +403,18 @@ export default function TimeTrackingClient({ initialClients, initialProjects }: 
         style={{ top }}
       />
     );
+  };
+
+  // Get cursor style for a time block based on mouse position
+  const getBlockCursor = (e: React.MouseEvent, blockElement: HTMLElement): string => {
+    const rect = blockElement.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const RESIZE_ZONE = 8;
+    
+    if (y <= RESIZE_ZONE || y >= rect.height - RESIZE_ZONE) {
+      return 'ns-resize';
+    }
+    return 'grab';
   };
 
   return (
@@ -318,13 +488,21 @@ export default function TimeTrackingClient({ initialClients, initialProjects }: 
             const dayEntries = getEntriesForDay(dayIndex);
             const dayDate = addDays(currentWeek.start, dayIndex);
             const isTodayDate = isToday(dayDate);
+            
+            // Filter out the entry being dragged if in move mode
+            const visibleEntries = dragState?.mode === 'move' || dragState?.mode === 'resize-top' || dragState?.mode === 'resize-bottom'
+              ? dayEntries.filter(e => e.id !== dragState.entryId)
+              : dayEntries;
+            
+            // Entries moved to different days handled by previewBlock
 
             return (
               <div 
                 key={day}
                 className={styles.dayColumn}
                 data-day-column
-                onMouseDown={(e) => handleMouseDown(e, dayIndex)}
+                ref={el => { if (el) dayColumnsRef.current[dayIndex] = el; }}
+                onMouseDown={(e) => handleColumnMouseDown(e, dayIndex)}
               >
                 {/* Hour slots */}
                 {Array.from({ length: 24 }, (_, hour) => (
@@ -336,50 +514,66 @@ export default function TimeTrackingClient({ initialClients, initialProjects }: 
                 ))}
 
                 {/* Time blocks */}
-                {dayEntries.map((entry) => {
+                {visibleEntries.map((entry) => {
                   const client = clients.find(c => c.id === entry.clientId);
                   const project = projects.find(p => p.id === entry.projectId);
                   const top = entry.startMinutes / 60 * HOUR_HEIGHT;
                   const height = Math.max(entry.durationMinutes / 60 * HOUR_HEIGHT, 20);
                   const bgColor = client?.color || 'var(--glass-3)';
+                  const isBeingDragged = dragState?.entryId === entry.id;
 
                   return (
                     <div
                       key={entry.id}
-                      className={`${styles.timeBlock} ${!client ? styles.timeBlockNoClient : ''}`}
+                      className={`${styles.timeBlock} ${!client ? styles.timeBlockNoClient : ''} ${isBeingDragged ? styles.timeBlockDragging : ''}`}
                       style={{
                         top,
                         height,
                         backgroundColor: bgColor,
                         color: client ? 'white' : 'var(--text-secondary)',
+                        opacity: isBeingDragged ? 0.5 : 1,
                       }}
-                      onClick={(e) => handleBlockClick(entry, e)}
+                      onMouseDown={(e) => handleBlockMouseDown(e, entry)}
+                      onDoubleClick={(e) => handleBlockDoubleClick(entry, e)}
+                      onMouseMove={(e) => {
+                        const target = e.currentTarget as HTMLElement;
+                        target.style.cursor = getBlockCursor(e, target);
+                      }}
                     >
+                      {/* Resize handle top */}
+                      <div className={styles.resizeHandleTop} />
+                      
                       <div className={styles.timeBlockTime}>
                         {format(entry.displayStartTime, 'h:mm a')} - {format(entry.displayEndTime, 'h:mm a')}
                       </div>
                       <div className={styles.timeBlockClient}>
                         {client?.name || 'No client assigned'}
                       </div>
-                      {project && (
+                      {project && height > 50 && (
                         <div className={styles.timeBlockProject}>
                           {project.name}
                         </div>
                       )}
+                      
+                      {/* Resize handle bottom */}
+                      <div className={styles.resizeHandleBottom} />
                     </div>
                   );
                 })}
 
-                {/* Creating slot indicator */}
-                {creatingSlot && creatingSlot.day === dayIndex && (
+                {/* Preview block (creating/moving/resizing) */}
+                {previewBlock && previewBlock.day === dayIndex && dragState && (
                   <div
-                    className={styles.creatingSlot}
+                    className={styles.previewBlock}
                     style={{
-                      top: creatingSlot.startMinutes / 60 * HOUR_HEIGHT,
-                      height: Math.max((creatingSlot.endMinutes - creatingSlot.startMinutes) / 60 * HOUR_HEIGHT, 20),
+                      top: previewBlock.startMinutes / 60 * HOUR_HEIGHT,
+                      height: Math.max((previewBlock.endMinutes - previewBlock.startMinutes) / 60 * HOUR_HEIGHT, 20),
                     }}
                   >
-                    {Math.floor((creatingSlot.endMinutes - creatingSlot.startMinutes) / 60)}h {(creatingSlot.endMinutes - creatingSlot.startMinutes) % 60}m
+                    <div className={styles.previewBlockContent}>
+                      {Math.floor((previewBlock.endMinutes - previewBlock.startMinutes) / 60)}h{' '}
+                      {(previewBlock.endMinutes - previewBlock.startMinutes) % 60}m
+                    </div>
                   </div>
                 )}
 
