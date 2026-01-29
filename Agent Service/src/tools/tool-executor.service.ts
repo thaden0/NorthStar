@@ -11,6 +11,7 @@ import { TimeTrackingService } from './time-tracking.service';
 import { ClientsService } from './clients.service';
 import { NotificationsService } from './notifications.service';
 import { FilesService } from './files.service';
+import { ScheduledTasksService } from './scheduled-tasks.service';
 import { ParsedToolCall } from './tool-parser.service';
 
 /**
@@ -85,6 +86,7 @@ export class ToolExecutorService {
     private clientsService: ClientsService,
     private notificationsService: NotificationsService,
     private filesService: FilesService,
+    private scheduledTasksService: ScheduledTasksService,
   ) {
     this.registerDefaultTools();
     this.registerMemoryTools();
@@ -344,7 +346,7 @@ export class ToolExecutorService {
       },
     });
 
-    // Schedule task tool
+    // Schedule task tool - creates tasks via North Star API so they appear in Scheduled Tasks UI
     this.registerTool({
       name: 'schedule_task',
       description: 'Schedule a task to run at a specific time or on a recurring schedule. Use this when the user wants something done at a future time (e.g., "remind me tomorrow", "every Friday at 9am", "at 5pm today", "tell me X at Y time").',
@@ -361,28 +363,42 @@ export class ToolExecutorService {
         context.onStatus?.('Scheduling task...');
         
         try {
-          const job = await this.cronJobsService.create(context.userId, {
-            name: args.name as string,
-            prompt: args.prompt as string,
-            scheduleType: args.scheduleType as 'once' | 'recurring' | 'cron',
-            scheduledAt: args.scheduledAt as string,
-            recurringPattern: args.recurringPattern as string,
-            recurringDay: args.recurringDay as number,
-            recurringTime: args.recurringTime as string,
-            timezone: 'America/New_York',
-            enabled: true,
-          });
+          // Use the North Star API to create the task so it appears in the UI
+          const result = await this.scheduledTasksService.createScheduledTask(
+            context.userId,
+            {
+              name: args.name as string,
+              prompt: args.prompt as string,
+              scheduleType: args.scheduleType as 'once' | 'recurring' | 'cron',
+              scheduledAt: args.scheduledAt as string,
+              recurringPattern: args.recurringPattern as string,
+              recurringDay: args.recurringDay as number,
+              recurringTime: args.recurringTime as string,
+              timezone: 'America/New_York',
+              enabled: true,
+            },
+            context.authToken
+          );
 
+          if (!result.success || !result.data) {
+            return {
+              success: false,
+              error: result.error || 'Failed to create scheduled task',
+              summary: 'Failed to schedule task',
+            };
+          }
+
+          const task = result.data;
           const scheduleDesc = args.scheduleType === 'once' 
             ? `at ${args.scheduledAt}` 
             : `${args.recurringPattern} at ${args.recurringTime}`;
 
           return {
             success: true,
-            data: { jobId: job.id, name: job.name, nextRunAt: job.nextRunAt },
-            summary: `Scheduled "${job.name}" to run ${scheduleDesc}`,
+            data: { taskId: task.id, name: task.name, nextRunAt: task.nextRunAt },
+            summary: `Scheduled "${task.name}" to run ${scheduleDesc}`,
             isComplete: true,
-            finalResult: `✅ I've scheduled your task "${job.name}" to run ${scheduleDesc}. You'll receive the results when it executes.`,
+            finalResult: `✅ I've scheduled your task "${task.name}" to run ${scheduleDesc}. You can view and manage it in Settings > Scheduled Tasks.`,
           };
         } catch (error) {
           return {

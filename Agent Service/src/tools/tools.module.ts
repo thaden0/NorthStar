@@ -12,6 +12,7 @@ import { TimeTrackingService } from './time-tracking.service';
 import { ClientsService } from './clients.service';
 import { NotificationsService } from './notifications.service';
 import { FilesService } from './files.service';
+import { ScheduledTasksService } from './scheduled-tasks.service';
 import { CronModule } from '../cron/cron.module';
 import { MemoryModule } from '../memory/memory.module';
 import { DatabaseModule } from '../database/database.module';
@@ -40,6 +41,7 @@ import { SettingsModule } from '../settings/settings.module';
     ClientsService,
     NotificationsService,
     FilesService,
+    ScheduledTasksService,
   ],
   exports: [
     PlaywrightService,
@@ -54,6 +56,7 @@ import { SettingsModule } from '../settings/settings.module';
     ClientsService,
     NotificationsService,
     FilesService,
+    ScheduledTasksService,
   ],
 })
 export class ToolsModule {}
