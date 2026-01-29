@@ -1,5 +1,6 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { EventEmitter } from 'events';
+import { randomUUID } from 'crypto';
 import { DatabaseService } from '../database/database.service';
 import { OllamaService } from '../llm/ollama.service';
 import { ToolExecutorService, ToolExecutionContext } from './tool-executor.service';
@@ -8,7 +9,6 @@ import { WikipediaService, WikipediaReference } from './wikipedia.service';
 import { RedditService } from './reddit.service';
 import { GoogleNewsService } from './google-news.service';
 import { PlaywrightService } from './playwright.service';
-import { nanoid } from 'nanoid';
 import {
   backgroundTasks,
   NewBackgroundTask,
@@ -117,7 +117,7 @@ export class BackgroundAgentService {
    * Start a background task
    */
   async startBackgroundTask(options: BackgroundTaskOptions): Promise<string> {
-    const taskId = nanoid(12);
+    const taskId = randomUUID().substring(0, 12);
     const emitter = new EventEmitter();
     
     const status: BackgroundTaskStatus = {
