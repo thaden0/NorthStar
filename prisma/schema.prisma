@@ -32,8 +32,57 @@ model User {
   timeEntries       TimeEntry[]
   invoices          Invoice[]
   invoiceSettings   InvoiceSettings?
+  googleAccounts    GoogleAccount[]
+  imapAccounts      ImapAccount[]
 
   @@index([email])
+}
+
+// Google Account connections (supports multiple accounts per user)
+model GoogleAccount {
+  id              String    @id @default(cuid())
+  userId          String
+  googleEmail     String    // The Google account email
+  displayName     String?   // User's display name from Google
+  isDefault       Boolean   @default(false)  // Primary account for sending
+  isActive        Boolean   @default(true)
+  lastSyncAt      DateTime?
+  syncError       String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, googleEmail])  // One user can't connect same Google account twice
+  @@index([userId])
+  @@index([googleEmail])
+}
+
+// IMAP Email Account connections (for non-Google email providers)
+model ImapAccount {
+  id              String    @id @default(cuid())
+  userId          String
+  email           String    // The email address
+  displayName     String?
+  imapHost        String    // IMAP server host
+  imapPort        Int       @default(993)
+  imapSecure      Boolean   @default(true)
+  smtpHost        String    // SMTP server for sending
+  smtpPort        Int       @default(587)
+  smtpSecure      Boolean   @default(true)
+  username        String    // Login username (usually email)
+  password        String    // Encrypted password
+  isDefault       Boolean   @default(false)
+  isActive        Boolean   @default(true)
+  lastSyncAt      DateTime?
+  syncError       String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, email])
+  @@index([userId])
 }
 
 model Role {
@@ -461,6 +510,10 @@ model SiteSettings {
   // Integration Settings
   googleCalendarSync    Boolean  @default(false)
   googleContactsSync    Boolean  @default(false)
+  googleEmailSync       Boolean  @default(true)
+  emailSyncIntervalMins Int      @default(10)     // How often to sync emails (minutes)
+  calendarSyncIntervalMins Int   @default(15)     // How often to sync calendar events
+  contactsSyncIntervalMins Int   @default(60)     // How often to sync contacts
   slackIntegration      Boolean  @default(false)
   webhooksEnabled       Boolean  @default(false)
   

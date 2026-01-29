@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { google, gmail_v1 } from 'googleapis';
 import { OAuthService } from '../oauth/oauth.service';
 import { GoogleClientService } from '../oauth/google-client.service';
@@ -16,6 +16,7 @@ export interface EmailMessage {
   isRead: boolean;
   isStarred: boolean;
   labels: string[];
+  accountEmail?: string;
 }
 
 export interface SendEmailDto {
@@ -23,6 +24,7 @@ export interface SendEmailDto {
   subject: string;
   body: string;
   replyToMessageId?: string;
+  accountEmail?: string;
 }
 
 @Injectable()
@@ -36,9 +38,10 @@ export class GmailService {
 
   /**
    * Get an authenticated Gmail API client for a user
+   * Can optionally specify which account to use
    */
-  private async getGmailClient(userId: string): Promise<gmail_v1.Gmail> {
-    const accessToken = await this.oauthService.getValidAccessToken(userId);
+  private async getGmailClient(userId: string, accountEmail?: string): Promise<gmail_v1.Gmail> {
+    const accessToken = await this.oauthService.getValidAccessToken(userId, accountEmail);
     const auth = this.googleClient.createAuthenticatedClient({
       accessToken,
     });
@@ -94,6 +97,7 @@ export class GmailService {
 
   /**
    * List emails with optional search query
+   * Supports multi-account via accountEmail parameter
    */
   async listEmails(
     userId: string,
@@ -102,9 +106,10 @@ export class GmailService {
       maxResults?: number;
       pageToken?: string;
       labelIds?: string[];
+      accountEmail?: string;
     } = {},
-  ): Promise<{ messages: EmailMessage[]; nextPageToken?: string }> {
-    const gmail = await this.getGmailClient(userId);
+  ): Promise<{ messages: EmailMessage[]; nextPageToken?: string; accountEmail?: string }> {
+    const gmail = await this.getGmailClient(userId, options.accountEmail);
 
     const response = await gmail.users.messages.list({
       userId: 'me',
@@ -140,6 +145,7 @@ export class GmailService {
           isRead: !detail.data.labelIds?.includes('UNREAD'),
           isStarred: detail.data.labelIds?.includes('STARRED') || false,
           labels: detail.data.labelIds || [],
+          accountEmail: options.accountEmail,
         });
       }
     }
@@ -147,14 +153,15 @@ export class GmailService {
     return {
       messages,
       nextPageToken: response.data.nextPageToken || undefined,
+      accountEmail: options.accountEmail,
     };
   }
 
   /**
    * Get a single email by ID
    */
-  async getEmail(userId: string, messageId: string): Promise<EmailMessage> {
-    const gmail = await this.getGmailClient(userId);
+  async getEmail(userId: string, messageId: string, accountEmail?: string): Promise<EmailMessage> {
+    const gmail = await this.getGmailClient(userId, accountEmail);
 
     const response = await gmail.users.messages.get({
       userId: 'me',
@@ -178,14 +185,16 @@ export class GmailService {
       isRead: !response.data.labelIds?.includes('UNREAD'),
       isStarred: response.data.labelIds?.includes('STARRED') || false,
       labels: response.data.labelIds || [],
+      accountEmail,
     };
   }
 
   /**
    * Send an email
+   * Can optionally specify which account to send from
    */
-  async sendEmail(userId: string, email: SendEmailDto): Promise<{ id: string; threadId: string }> {
-    const gmail = await this.getGmailClient(userId);
+  async sendEmail(userId: string, email: SendEmailDto): Promise<{ id: string; threadId: string; accountEmail?: string }> {
+    const gmail = await this.getGmailClient(userId, email.accountEmail);
 
     // Get user's email address for the From field
     const profile = await gmail.users.getProfile({ userId: 'me' });
@@ -228,24 +237,25 @@ export class GmailService {
       requestBody: {
         raw,
         threadId: email.replyToMessageId
-          ? (await this.getEmail(userId, email.replyToMessageId)).threadId
+          ? (await this.getEmail(userId, email.replyToMessageId, email.accountEmail)).threadId
           : undefined,
       },
     });
 
-    this.logger.log(`Email sent: ${response.data.id}`);
+    this.logger.log(`Email sent: ${response.data.id} from ${fromEmail}`);
 
     return {
       id: response.data.id!,
       threadId: response.data.threadId!,
+      accountEmail: fromEmail || email.accountEmail,
     };
   }
 
   /**
    * Mark email as read
    */
-  async markAsRead(userId: string, messageId: string): Promise<void> {
-    const gmail = await this.getGmailClient(userId);
+  async markAsRead(userId: string, messageId: string, accountEmail?: string): Promise<void> {
+    const gmail = await this.getGmailClient(userId, accountEmail);
     
     await gmail.users.messages.modify({
       userId: 'me',
@@ -259,8 +269,8 @@ export class GmailService {
   /**
    * Mark email as unread
    */
-  async markAsUnread(userId: string, messageId: string): Promise<void> {
-    const gmail = await this.getGmailClient(userId);
+  async markAsUnread(userId: string, messageId: string, accountEmail?: string): Promise<void> {
+    const gmail = await this.getGmailClient(userId, accountEmail);
     
     await gmail.users.messages.modify({
       userId: 'me',
@@ -274,8 +284,8 @@ export class GmailService {
   /**
    * Star/unstar email
    */
-  async toggleStar(userId: string, messageId: string, starred: boolean): Promise<void> {
-    const gmail = await this.getGmailClient(userId);
+  async toggleStar(userId: string, messageId: string, starred: boolean, accountEmail?: string): Promise<void> {
+    const gmail = await this.getGmailClient(userId, accountEmail);
     
     await gmail.users.messages.modify({
       userId: 'me',
@@ -289,8 +299,8 @@ export class GmailService {
   /**
    * Delete (trash) email
    */
-  async trashEmail(userId: string, messageId: string): Promise<void> {
-    const gmail = await this.getGmailClient(userId);
+  async trashEmail(userId: string, messageId: string, accountEmail?: string): Promise<void> {
+    const gmail = await this.getGmailClient(userId, accountEmail);
     
     await gmail.users.messages.trash({
       userId: 'me',
@@ -305,16 +315,17 @@ export class GmailService {
     userId: string,
     query: string,
     maxResults: number = 20,
+    accountEmail?: string,
   ): Promise<EmailMessage[]> {
-    const result = await this.listEmails(userId, { query, maxResults });
+    const result = await this.listEmails(userId, { query, maxResults, accountEmail });
     return result.messages;
   }
 
   /**
    * Get unread count
    */
-  async getUnreadCount(userId: string): Promise<number> {
-    const gmail = await this.getGmailClient(userId);
+  async getUnreadCount(userId: string, accountEmail?: string): Promise<number> {
+    const gmail = await this.getGmailClient(userId, accountEmail);
     
     const response = await gmail.users.labels.get({
       userId: 'me',

@@ -1,16 +1,21 @@
 import { pgTable, text, timestamp, boolean, jsonb } from 'drizzle-orm/pg-core';
 
 // Store Google OAuth tokens for each North Star user
+// Supports multiple Google accounts per user
 export const googleTokens = pgTable('google_tokens', {
   id: text('id').primaryKey(), // UUID
-  userId: text('user_id').notNull().unique(), // North Star user ID
+  userId: text('user_id').notNull(), // North Star user ID (allows multiple accounts)
   email: text('email').notNull(), // Google account email
+  displayName: text('display_name'), // User's display name from Google
   accessToken: text('access_token').notNull(),
   refreshToken: text('refresh_token'),
   tokenType: text('token_type').default('Bearer'),
   expiresAt: timestamp('expires_at'),
   scope: text('scope'),
   isActive: boolean('is_active').default(true),
+  isDefault: boolean('is_default').default(false), // Primary account for the user
+  lastSyncAt: timestamp('last_sync_at'),
+  syncError: text('sync_error'),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });
@@ -19,6 +24,7 @@ export const googleTokens = pgTable('google_tokens', {
 export const gmailCache = pgTable('gmail_cache', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull(),
+  accountEmail: text('account_email').notNull(), // Which Google account this belongs to
   messageId: text('message_id').notNull(),
   threadId: text('thread_id'),
   from: text('from'),
@@ -38,6 +44,7 @@ export const gmailCache = pgTable('gmail_cache', {
 export const calendarCache = pgTable('calendar_cache', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull(),
+  accountEmail: text('account_email').notNull(), // Which Google account this belongs to
   eventId: text('event_id').notNull(),
   calendarId: text('calendar_id').default('primary'),
   title: text('title'),
@@ -56,6 +63,7 @@ export const calendarCache = pgTable('calendar_cache', {
 export const contactsCache = pgTable('contacts_cache', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull(),
+  accountEmail: text('account_email').notNull(), // Which Google account this belongs to
   resourceName: text('resource_name').notNull(),
   name: text('name'),
   givenName: text('given_name'),

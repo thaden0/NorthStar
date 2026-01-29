@@ -8,14 +8,30 @@ export interface GmailMessage {
   to: string;
   subject: string;
   snippet: string;
+  body?: string;
   date: string;
   isUnread: boolean;
   isStarred: boolean;
+  accountEmail?: string;
 }
 
 export interface GmailMessagesResult {
   messages: GmailMessage[];
   pageToken?: string;
+  accountEmail?: string;
+  error?: string;
+}
+
+export interface GoogleAccountInfo {
+  email: string;
+  displayName?: string;
+  isDefault: boolean;
+  isActive: boolean;
+  lastSyncAt?: string;
+}
+
+export interface AccountsResult {
+  accounts: GoogleAccountInfo[];
   error?: string;
 }
 
@@ -30,13 +46,52 @@ export class GmailToolService {
   }
 
   /**
-   * Get Gmail messages for a user
-   * Note: We pass the userId as a header so the Google Service can look up the OAuth token
+   * Get all connected Google accounts for a user
    */
-  async getMessages(userId: string, token: string, options?: { maxResults?: number }): Promise<GmailMessagesResult> {
+  async getConnectedAccounts(userId: string, token: string): Promise<AccountsResult> {
+    try {
+      const url = `${this.googleServiceUrl}/oauth/accounts`;
+      
+      this.logger.debug(`Fetching connected accounts for user ${userId}`);
+      
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        this.logger.error(`Failed to fetch accounts: ${response.status} ${errorText}`);
+        return { accounts: [], error: `Failed to fetch accounts: ${response.status}` };
+      }
+
+      const data = await response.json();
+      return { accounts: data.accounts || [] };
+    } catch (error) {
+      this.logger.error(`Error fetching accounts: ${error}`);
+      return { accounts: [], error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  /**
+   * Get Gmail messages for a user
+   * Can optionally specify which account to use
+   */
+  async getMessages(
+    userId: string, 
+    token: string, 
+    options?: { maxResults?: number; accountEmail?: string }
+  ): Promise<GmailMessagesResult> {
     try {
       const maxResults = options?.maxResults || 10;
-      const url = `${this.googleServiceUrl}/gmail/messages?maxResults=${maxResults}`;
+      let url = `${this.googleServiceUrl}/gmail/messages?maxResults=${maxResults}`;
+      
+      // Add account email if specified
+      if (options?.accountEmail) {
+        url += `&accountEmail=${encodeURIComponent(options.accountEmail)}`;
+      }
       
       this.logger.debug(`Fetching Gmail messages for user ${userId} from ${url}`);
       
@@ -55,7 +110,11 @@ export class GmailToolService {
       }
 
       const data = await response.json();
-      return { messages: data.messages || data, pageToken: data.nextPageToken };
+      return { 
+        messages: data.messages || data, 
+        pageToken: data.nextPageToken,
+        accountEmail: options?.accountEmail,
+      };
     } catch (error) {
       this.logger.error(`Error fetching Gmail messages: ${error}`);
       return { messages: [], error: error instanceof Error ? error.message : String(error) };
@@ -64,10 +123,20 @@ export class GmailToolService {
 
   /**
    * Search Gmail messages
+   * Can optionally specify which account to search
    */
-  async searchMessages(userId: string, token: string, query: string): Promise<GmailMessagesResult> {
+  async searchMessages(
+    userId: string, 
+    token: string, 
+    query: string,
+    options?: { accountEmail?: string }
+  ): Promise<GmailMessagesResult> {
     try {
-      const url = `${this.googleServiceUrl}/gmail/search?q=${encodeURIComponent(query)}`;
+      let url = `${this.googleServiceUrl}/gmail/search?q=${encodeURIComponent(query)}`;
+      
+      if (options?.accountEmail) {
+        url += `&accountEmail=${encodeURIComponent(options.accountEmail)}`;
+      }
       
       this.logger.debug(`Searching Gmail for user ${userId}: ${query}`);
       
@@ -85,7 +154,10 @@ export class GmailToolService {
       }
 
       const data = await response.json();
-      return { messages: data.messages || data };
+      return { 
+        messages: data.messages || data,
+        accountEmail: options?.accountEmail,
+      };
     } catch (error) {
       this.logger.error(`Error searching Gmail: ${error}`);
       return { messages: [], error: error instanceof Error ? error.message : String(error) };
@@ -94,10 +166,19 @@ export class GmailToolService {
 
   /**
    * Get unread count
+   * Can optionally specify which account
    */
-  async getUnreadCount(userId: string, token: string): Promise<number> {
+  async getUnreadCount(
+    userId: string, 
+    token: string,
+    options?: { accountEmail?: string }
+  ): Promise<number> {
     try {
-      const url = `${this.googleServiceUrl}/gmail/unread-count`;
+      let url = `${this.googleServiceUrl}/gmail/unread-count`;
+      
+      if (options?.accountEmail) {
+        url += `?accountEmail=${encodeURIComponent(options.accountEmail)}`;
+      }
       
       const response = await fetch(url, {
         headers: {
@@ -116,6 +197,88 @@ export class GmailToolService {
     } catch (error) {
       this.logger.error(`Error getting unread count: ${error}`);
       return 0;
+    }
+  }
+
+  /**
+   * Send an email
+   * Can optionally specify which account to send from
+   */
+  async sendEmail(
+    userId: string,
+    token: string,
+    email: {
+      to: string;
+      subject: string;
+      body: string;
+      accountEmail?: string;
+    }
+  ): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    try {
+      const url = `${this.googleServiceUrl}/gmail/messages`;
+      
+      this.logger.debug(`Sending email for user ${userId} to ${email.to}`);
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          to: email.to,
+          subject: email.subject,
+          body: email.body,
+          accountEmail: email.accountEmail,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        this.logger.error(`Failed to send email: ${response.status} ${errorText}`);
+        return { success: false, error: `Failed to send: ${response.status}` };
+      }
+
+      const data = await response.json();
+      return { success: true, messageId: data.messageId || data.id };
+    } catch (error) {
+      this.logger.error(`Error sending email: ${error}`);
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  /**
+   * Get a specific message by ID
+   */
+  async getMessage(
+    userId: string,
+    token: string,
+    messageId: string,
+    options?: { accountEmail?: string }
+  ): Promise<{ message?: GmailMessage; error?: string }> {
+    try {
+      let url = `${this.googleServiceUrl}/gmail/messages/${messageId}`;
+      
+      if (options?.accountEmail) {
+        url += `?accountEmail=${encodeURIComponent(options.accountEmail)}`;
+      }
+      
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return { error: `Failed to get message: ${response.status}` };
+      }
+
+      const data = await response.json();
+      return { message: data };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : String(error) };
     }
   }
 }

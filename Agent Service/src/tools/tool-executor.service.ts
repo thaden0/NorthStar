@@ -267,24 +267,70 @@ export class ToolExecutorService {
       },
     });
 
-    // Gmail: Get messages
+    // Gmail: List connected email accounts
+    this.registerTool({
+      name: 'list_email_accounts',
+      description: 'List all connected Google/email accounts for the user. Use this to see which accounts are available before fetching or sending emails. Returns account emails, display names, and which is the default.',
+      parameters: {},
+      execute: async (args, context) => {
+        if (!context.authToken) {
+          return { success: false, error: 'No auth token', summary: 'Email access denied' };
+        }
+        
+        context.onStatus?.('Getting connected email accounts...');
+        
+        const result = await this.gmailToolService.getConnectedAccounts(
+          context.userId,
+          context.authToken
+        );
+        
+        if (result.error) {
+          return { success: false, error: result.error, summary: `Failed: ${result.error}` };
+        }
+        
+        if (result.accounts.length === 0) {
+          return {
+            success: true,
+            data: { accounts: [] },
+            summary: 'No email accounts connected. User needs to connect a Google account in Settings.',
+          };
+        }
+        
+        return {
+          success: true,
+          data: {
+            accountCount: result.accounts.length,
+            accounts: result.accounts,
+            defaultAccount: result.accounts.find(a => a.isDefault)?.email,
+          },
+          summary: `User has ${result.accounts.length} email account(s): ${result.accounts.map(a => a.email).join(', ')}`,
+        };
+      },
+    });
+
+    // Gmail: Get messages (with multi-account support)
     this.registerTool({
       name: 'get_gmail_messages',
-      description: "Get the user's latest Gmail messages from their inbox",
+      description: "Get the user's latest Gmail messages. This is a useful tool for checking what emails the user has received. You should use this proactively when the user mentions emails, messages, or when it would be helpful to know their recent communications.",
       parameters: {
-        maxResults: { type: 'number', description: 'Maximum messages to retrieve (default: 10)' },
+        maxResults: { type: 'number', description: 'Maximum messages to retrieve (default: 10, max: 50)' },
+        accountEmail: { type: 'string', description: 'Specific account email to use (optional, uses default if not specified). Use list_email_accounts first to see available accounts.' },
       },
       execute: async (args, context) => {
         if (!context.authToken) {
           return { success: false, error: 'No auth token - Gmail not available', summary: 'Gmail access denied' };
         }
         
-        context.onStatus?.('Fetching Gmail messages...');
+        const accountEmail = args.accountEmail as string | undefined;
+        context.onStatus?.(`Fetching Gmail messages${accountEmail ? ` from ${accountEmail}` : ''}...`);
         
         const result = await this.gmailToolService.getMessages(
           context.userId,
           context.authToken,
-          { maxResults: (args.maxResults as number) || 10 }
+          { 
+            maxResults: (args.maxResults as number) || 10,
+            accountEmail,
+          }
         );
         
         if (result.error) {
@@ -294,6 +340,7 @@ export class ToolExecutorService {
         return {
           success: true,
           data: {
+            accountEmail: result.accountEmail,
             messageCount: result.messages.length,
             messages: result.messages.map(m => ({
               id: m.id,
@@ -304,17 +351,18 @@ export class ToolExecutorService {
               isUnread: m.isUnread,
             })),
           },
-          summary: `Found ${result.messages.length} Gmail messages`,
+          summary: `Found ${result.messages.length} Gmail messages${accountEmail ? ` in ${accountEmail}` : ''}`,
         };
       },
     });
 
-    // Gmail: Search
+    // Gmail: Search (with multi-account support)
     this.registerTool({
       name: 'search_gmail',
-      description: 'Search Gmail using Gmail search syntax',
+      description: 'Search Gmail using Gmail search syntax (from:, to:, subject:, has:attachment, is:unread, etc.). Use this to find specific emails. Very useful when the user asks about emails from someone, about a topic, or from a time period.',
       parameters: {
-        query: { type: 'string', description: 'Gmail search query', required: true },
+        query: { type: 'string', description: 'Gmail search query (e.g., "from:boss@company.com", "subject:invoice", "is:unread")', required: true },
+        accountEmail: { type: 'string', description: 'Specific account email to search (optional, searches default if not specified)' },
       },
       execute: async (args, context) => {
         if (!context.authToken) {
@@ -322,12 +370,14 @@ export class ToolExecutorService {
         }
         
         const query = args.query as string;
+        const accountEmail = args.accountEmail as string | undefined;
         context.onStatus?.(`Searching Gmail for: ${query}`);
         
         const result = await this.gmailToolService.searchMessages(
           context.userId,
           context.authToken,
-          query
+          query,
+          { accountEmail }
         );
         
         if (result.error) {
@@ -338,10 +388,111 @@ export class ToolExecutorService {
           success: true,
           data: {
             query,
+            accountEmail: result.accountEmail,
             messageCount: result.messages.length,
             messages: result.messages,
           },
           summary: `Found ${result.messages.length} matching emails`,
+        };
+      },
+    });
+
+    // Gmail: Send email
+    this.registerTool({
+      name: 'send_email',
+      description: 'Send an email on behalf of the user. Use this when the user asks you to send, reply to, or compose an email. Always confirm the recipient and content with the user before sending unless they explicitly asked you to send it.',
+      parameters: {
+        to: { type: 'string', description: 'Recipient email address', required: true },
+        subject: { type: 'string', description: 'Email subject line', required: true },
+        body: { type: 'string', description: 'Email body content (can include basic HTML formatting)', required: true },
+        accountEmail: { type: 'string', description: 'Account to send from (optional, uses default if not specified)' },
+      },
+      execute: async (args, context) => {
+        if (!context.authToken) {
+          return { success: false, error: 'No auth token', summary: 'Gmail access denied' };
+        }
+        
+        const to = args.to as string;
+        const subject = args.subject as string;
+        const body = args.body as string;
+        const accountEmail = args.accountEmail as string | undefined;
+        
+        context.onStatus?.(`Sending email to ${to}...`);
+        
+        // Open email widget for user confirmation
+        const widgetId = `email_${Date.now()}`;
+        context.onWidgetOpen?.({
+          widgetId,
+          widgetType: 'email_send',
+          widgetData: { to, subject, body, accountEmail },
+          canCancel: true,
+        });
+        
+        const result = await this.gmailToolService.sendEmail(
+          context.userId,
+          context.authToken,
+          { to, subject, body, accountEmail }
+        );
+        
+        context.onWidgetClose?.(widgetId);
+        
+        if (!result.success) {
+          return { success: false, error: result.error, summary: `Failed to send: ${result.error}` };
+        }
+        
+        return {
+          success: true,
+          data: { messageId: result.messageId, to, subject },
+          summary: `Email sent to ${to}`,
+          isComplete: true,
+          finalResult: `✅ Email sent successfully to ${to}!\n\nSubject: ${subject}\n\nThe email has been sent from ${accountEmail || 'your default account'}.`,
+        };
+      },
+    });
+
+    // Gmail: Get email details
+    this.registerTool({
+      name: 'get_email_details',
+      description: 'Get the full content of a specific email by its ID. Use this after listing or searching emails to read the full message content.',
+      parameters: {
+        messageId: { type: 'string', description: 'Email message ID from get_gmail_messages or search_gmail', required: true },
+        accountEmail: { type: 'string', description: 'Account the email belongs to (optional)' },
+      },
+      execute: async (args, context) => {
+        if (!context.authToken) {
+          return { success: false, error: 'No auth token', summary: 'Gmail access denied' };
+        }
+        
+        const messageId = args.messageId as string;
+        const accountEmail = args.accountEmail as string | undefined;
+        
+        context.onStatus?.('Fetching email content...');
+        
+        const result = await this.gmailToolService.getMessage(
+          context.userId,
+          context.authToken,
+          messageId,
+          { accountEmail }
+        );
+        
+        if (result.error) {
+          return { success: false, error: result.error, summary: `Failed: ${result.error}` };
+        }
+        
+        const msg = result.message!;
+        return {
+          success: true,
+          data: {
+            id: msg.id,
+            from: msg.from,
+            to: msg.to,
+            subject: msg.subject,
+            date: msg.date,
+            body: msg.body,
+            isUnread: msg.isUnread,
+            isStarred: msg.isStarred,
+          },
+          summary: `Email from ${msg.from}: "${msg.subject}"`,
         };
       },
     });

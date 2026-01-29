@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import ReactMarkdown from 'react-markdown';
 import styles from './email.module.css';
 import { 
   FiInbox, FiStar, FiSend, FiFile, FiTrash2, FiAlertCircle,
@@ -31,6 +32,60 @@ interface EmailClientProps {
 
 type FolderType = 'inbox' | 'starred' | 'sent' | 'drafts' | 'trash' | 'spam';
 
+// Component to intelligently render email body content (HTML, Markdown, or plain text)
+function EmailBodyRenderer({ body, snippet }: { body?: string; snippet: string }) {
+  const content = body || snippet;
+  
+  // Check if content looks like HTML
+  const isHtml = useMemo(() => {
+    if (!content) return false;
+    return /<[a-z][\s\S]*>/i.test(content);
+  }, [content]);
+  
+  // Check if content looks like Markdown (has common markdown patterns)
+  const isMarkdown = useMemo(() => {
+    if (!content || isHtml) return false;
+    // Check for common markdown patterns
+    const markdownPatterns = [
+      /^#{1,6}\s/m,           // Headers
+      /\*\*[^*]+\*\*/,        // Bold
+      /\*[^*]+\*/,            // Italic
+      /\[[^\]]+\]\([^)]+\)/,  // Links
+      /^[-*+]\s/m,            // Unordered lists
+      /^\d+\.\s/m,            // Ordered lists
+      /^>\s/m,                // Blockquotes
+      /`[^`]+`/,              // Inline code
+      /```[\s\S]*```/,        // Code blocks
+    ];
+    return markdownPatterns.some(pattern => pattern.test(content));
+  }, [content, isHtml]);
+  
+  if (!content) {
+    return <p className={styles.emailBodyEmpty}>No content</p>;
+  }
+  
+  if (isHtml) {
+    return <div dangerouslySetInnerHTML={{ __html: content }} />;
+  }
+  
+  if (isMarkdown) {
+    return (
+      <div className={styles.markdownContent}>
+        <ReactMarkdown>{content}</ReactMarkdown>
+      </div>
+    );
+  }
+  
+  // Plain text - preserve whitespace and line breaks
+  return (
+    <div className={styles.plainTextContent}>
+      {content.split('\n').map((line, i) => (
+        <p key={i}>{line || '\u00A0'}</p>
+      ))}
+    </div>
+  );
+}
+
 const folders: { id: FolderType; label: string; icon: React.ReactNode; query?: string }[] = [
   { id: 'inbox', label: 'Inbox', icon: <FiInbox />, query: 'in:inbox' },
   { id: 'starred', label: 'Starred', icon: <FiStar />, query: 'is:starred' },
@@ -41,14 +96,13 @@ const folders: { id: FolderType; label: string; icon: React.ReactNode; query?: s
 ];
 
 // accountEmail is used for multi-account support (selecting which account to query)
-export default function EmailClient({ accountEmail: _accountEmail }: EmailClientProps) {
+export default function EmailClient({ accountEmail }: EmailClientProps) {
   const [activeFolder, setActiveFolder] = useState<FolderType>('inbox');
   const [emails, setEmails] = useState<EmailMessage[]>([]);
   const [selectedEmail, setSelectedEmail] = useState<EmailMessage | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [unreadCount, setUnreadCount] = useState(0);
   const [showCompose, setShowCompose] = useState(false);
   const [composeData, setComposeData] = useState({
     to: '',
@@ -66,8 +120,9 @@ export default function EmailClient({ accountEmail: _accountEmail }: EmailClient
     try {
       const folderConfig = folders.find(f => f.id === folder);
       const query = searchQuery || folderConfig?.query || 'in:inbox';
+      const accountParam = accountEmail ? `&accountEmail=${encodeURIComponent(accountEmail)}` : '';
       
-      const response = await fetch(`/api/google/gmail/messages?query=${encodeURIComponent(query)}&maxResults=50`);
+      const response = await fetch(`/api/google/gmail/messages?query=${encodeURIComponent(query)}&maxResults=50${accountParam}`);
       if (response.ok) {
         const data = await response.json();
         setEmails(data.messages || []);
@@ -77,20 +132,20 @@ export default function EmailClient({ accountEmail: _accountEmail }: EmailClient
     } finally {
       setIsLoading(false);
     }
-  }, [searchQuery]);
+  }, [searchQuery, accountEmail]);
 
   const fetchUnreadCount = useCallback(async () => {
     try {
-      const response = await fetch('/api/google/gmail/unread-count');
+      const accountParam = accountEmail ? `?accountEmail=${encodeURIComponent(accountEmail)}` : '';
+      const response = await fetch(`/api/google/gmail/unread-count${accountParam}`);
       if (response.ok) {
         const data = await response.json();
-        setUnreadCount(data.count || 0);
         setFolderCounts(prev => ({ ...prev, inbox: data.count || 0 }));
       }
     } catch (error) {
       console.error('Failed to fetch unread count:', error);
     }
-  }, []);
+  }, [accountEmail]);
 
   useEffect(() => {
     fetchEmails(activeFolder);
@@ -110,11 +165,13 @@ export default function EmailClient({ accountEmail: _accountEmail }: EmailClient
     // Mark as read if unread
     if (!email.isRead) {
       try {
-        await fetch(`/api/google/gmail/messages/${email.id}/read`, { method: 'PATCH' });
+        const accountParam = accountEmail ? `?accountEmail=${encodeURIComponent(accountEmail)}` : '';
+        await fetch(`/api/google/gmail/messages/${email.id}/read${accountParam}`, { method: 'PATCH' });
         setEmails(prev => prev.map(e => 
           e.id === email.id ? { ...e, isRead: true } : e
         ));
-        setUnreadCount(prev => Math.max(0, prev - 1));
+        // Decrement both unreadCount and folderCounts.inbox
+        setFolderCounts(prev => ({ ...prev, inbox: Math.max(0, prev.inbox - 1) }));
       } catch (error) {
         console.error('Failed to mark as read:', error);
       }
@@ -384,11 +441,7 @@ export default function EmailClient({ accountEmail: _accountEmail }: EmailClient
             </div>
 
             <div className={styles.emailDetailBody}>
-              {selectedEmail.body ? (
-                <div dangerouslySetInnerHTML={{ __html: selectedEmail.body }} />
-              ) : (
-                <p>{selectedEmail.snippet}</p>
-              )}
+              <EmailBodyRenderer body={selectedEmail.body} snippet={selectedEmail.snippet} />
             </div>
           </div>
 
