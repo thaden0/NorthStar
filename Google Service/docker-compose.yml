@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "${PORT:-3003}:3003"
+      - "${EXTERNAL_PORT:-3004}:3003"
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/google_service
       - JWT_SECRET=${JWT_SECRET:-northstar-agent-service-secret-key-2026}
