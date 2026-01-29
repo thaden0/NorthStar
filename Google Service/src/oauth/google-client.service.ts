@@ -143,21 +143,21 @@ export class GoogleClientService {
     );
     client.setCredentials({ access_token: accessToken });
     
-    // Use the googleapis library
-    const oauth2 = google.oauth2({ version: 'v2', auth: client });
-    const { data } = await oauth2.userinfo.get();
+    // Use Gmail API to get user profile (more reliable since we definitely have Gmail scope)
+    const gmail = google.gmail({ version: 'v1', auth: client });
+    const { data: profile } = await gmail.users.getProfile({ userId: 'me' });
     
-    if (!data.email) {
-      throw new Error('Failed to get user email from Google');
+    if (!profile.emailAddress) {
+      throw new Error('Failed to get user email from Gmail');
     }
     
-    this.logger.debug(`Got user info for: ${data.email}`);
+    this.logger.debug(`Got user info for: ${profile.emailAddress}`);
     
     return {
-      id: data.id || '',
-      email: data.email,
-      name: data.name || undefined,
-      picture: data.picture || undefined,
+      id: profile.emailAddress, // Use email as ID since we can't get OAuth2 userinfo
+      email: profile.emailAddress,
+      name: undefined,
+      picture: undefined,
     };
   }
 }
