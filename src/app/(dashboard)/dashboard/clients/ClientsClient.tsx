@@ -8,6 +8,7 @@ import {
   updateClientAction,
   deleteClientAction,
   createProjectAction,
+  updateProjectAction,
   deleteProjectAction,
 } from '@/server/timeTracking/actions';
 import type { Client, ClientProject } from '@/types/timeTracking';
@@ -28,6 +29,7 @@ export default function ClientsClient({ initialClients, initialProjects }: Clien
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [projectClientId, setProjectClientId] = useState<string | null>(null);
+  const [editingProject, setEditingProject] = useState<ClientProject | null>(null);
 
   // Open client modal for create/edit
   const openClientModal = (client?: Client) => {
@@ -35,9 +37,10 @@ export default function ClientsClient({ initialClients, initialProjects }: Clien
     setIsClientModalOpen(true);
   };
 
-  // Open project modal
-  const openProjectModal = (clientId: string) => {
+  // Open project modal for create/edit
+  const openProjectModal = (clientId: string, project?: ClientProject) => {
     setProjectClientId(clientId);
+    setEditingProject(project || null);
     setIsProjectModalOpen(true);
   };
 
@@ -99,10 +102,15 @@ export default function ClientsClient({ initialClients, initialProjects }: Clien
   };
 
   // Handle project save callback
-  const handleProjectSaved = (project: ClientProject) => {
-    setProjects([...projects, project]);
+  const handleProjectSaved = (project: ClientProject, isNew: boolean) => {
+    if (isNew) {
+      setProjects([...projects, project]);
+    } else {
+      setProjects(projects.map(p => p.id === project.id ? project : p));
+    }
     setIsProjectModalOpen(false);
     setProjectClientId(null);
+    setEditingProject(null);
   };
 
   return (
@@ -201,6 +209,14 @@ export default function ClientsClient({ initialClients, initialProjects }: Clien
                               </span>
                             )}
                             <button 
+                              className={styles.actionBtn}
+                              onClick={() => openProjectModal(client.id, project)}
+                              style={{ width: '24px', height: '24px' }}
+                              title="Edit project"
+                            >
+                              <FiEdit2 size={12} />
+                            </button>
+                            <button 
                               className={`${styles.actionBtn} ${styles.actionBtnDanger}`}
                               onClick={() => handleDeleteProject(project)}
                               style={{ width: '24px', height: '24px' }}
@@ -252,9 +268,11 @@ export default function ClientsClient({ initialClients, initialProjects }: Clien
       {isProjectModalOpen && projectClientId && (
         <ProjectModal
           clientId={projectClientId}
+          project={editingProject}
           onClose={() => {
             setIsProjectModalOpen(false);
             setProjectClientId(null);
+            setEditingProject(null);
           }}
           onSave={handleProjectSaved}
         />
@@ -415,6 +433,18 @@ function ClientModal({ client, onClose, onSave }: ClientModalProps) {
             />
           </div>
 
+          <div className={styles.formGroup}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={isActive}
+                onChange={(e) => setIsActive(e.target.checked)}
+                style={{ width: '18px', height: '18px', accentColor: 'var(--blue-electric)' }}
+              />
+              <span className={styles.label} style={{ margin: 0 }}>Active Client</span>
+            </label>
+          </div>
+
           <div className={styles.modalActions}>
             <button
               type="button"
@@ -441,14 +471,16 @@ function ClientModal({ client, onClose, onSave }: ClientModalProps) {
 // Project Modal Component
 interface ProjectModalProps {
   clientId: string;
+  project?: ClientProject | null;
   onClose: () => void;
-  onSave: (project: ClientProject) => void;
+  onSave: (project: ClientProject, isNew: boolean) => void;
 }
 
-function ProjectModal({ clientId, onClose, onSave }: ProjectModalProps) {
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [hourlyRate, setHourlyRate] = useState('');
+function ProjectModal({ clientId, project, onClose, onSave }: ProjectModalProps) {
+  const isEditing = !!project;
+  const [name, setName] = useState(project?.name || '');
+  const [description, setDescription] = useState(project?.description || '');
+  const [hourlyRate, setHourlyRate] = useState(project?.hourlyRate?.toString() || '');
   const [isSaving, setIsSaving] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -469,17 +501,22 @@ function ProjectModal({ clientId, onClose, onSave }: ProjectModalProps) {
         formData.set('hourlyRate', hourlyRate);
       }
 
-      const result = await createProjectAction(formData);
+      let result;
+      if (isEditing && project) {
+        result = await updateProjectAction(project.id, formData);
+      } else {
+        result = await createProjectAction(formData);
+      }
 
       if (result.success && result.data) {
-        toast.success('Project created');
-        onSave(result.data as ClientProject);
+        toast.success(isEditing ? 'Project updated' : 'Project created');
+        onSave(result.data as ClientProject, !isEditing);
       } else {
-        toast.error(result.error || 'Failed to create project');
+        toast.error(result.error || `Failed to ${isEditing ? 'update' : 'create'} project`);
       }
     } catch (error) {
-      console.error('Failed to create project:', error);
-      toast.error('Failed to create project');
+      console.error(`Failed to ${isEditing ? 'update' : 'create'} project:`, error);
+      toast.error(`Failed to ${isEditing ? 'update' : 'create'} project`);
     }
     setIsSaving(false);
   };
@@ -489,7 +526,7 @@ function ProjectModal({ clientId, onClose, onSave }: ProjectModalProps) {
       <div className={styles.modalOverlay} onClick={onClose} />
       <div className={styles.modalContent}>
         <div className={styles.modalHeader}>
-          <h2 className={styles.modalTitle}>Add Project</h2>
+          <h2 className={styles.modalTitle}>{isEditing ? 'Edit Project' : 'Add Project'}</h2>
           <button className={styles.modalCloseBtn} onClick={onClose}>
             <FiX size={20} />
           </button>
@@ -545,7 +582,7 @@ function ProjectModal({ clientId, onClose, onSave }: ProjectModalProps) {
               className={styles.btnPrimary}
               disabled={isSaving}
             >
-              {isSaving ? 'Saving...' : 'Add Project'}
+              {isSaving ? 'Saving...' : (isEditing ? 'Save Changes' : 'Add Project')}
             </button>
           </div>
         </form>
