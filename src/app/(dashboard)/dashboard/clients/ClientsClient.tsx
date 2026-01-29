@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { FiPlus, FiEdit2, FiTrash2, FiX, FiUsers } from 'react-icons/fi';
+import { FiPlus, FiEdit2, FiTrash2, FiX, FiUsers, FiSettings } from 'react-icons/fi';
 import { toast } from 'sonner';
 import {
   createClientAction,
@@ -13,6 +13,7 @@ import {
 } from '@/server/timeTracking/actions';
 import type { Client, ClientProject } from '@/types/timeTracking';
 import { CLIENT_COLORS } from '@/types/timeTracking';
+import InvoiceSettingsModal from './InvoiceSettingsModal';
 import styles from './clients.module.css';
 
 interface ClientsClientProps {
@@ -27,6 +28,7 @@ export default function ClientsClient({ initialClients, initialProjects }: Clien
   // Modal states
   const [isClientModalOpen, setIsClientModalOpen] = useState(false);
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
+  const [isInvoiceSettingsOpen, setIsInvoiceSettingsOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [projectClientId, setProjectClientId] = useState<string | null>(null);
   const [editingProject, setEditingProject] = useState<ClientProject | null>(null);
@@ -118,10 +120,16 @@ export default function ClientsClient({ initialClients, initialProjects }: Clien
       {/* Header */}
       <div className={styles.header}>
         <h1 className={styles.title}>Clients</h1>
-        <button className={styles.addBtn} onClick={() => openClientModal()}>
-          <FiPlus size={18} />
-          Add Client
-        </button>
+        <div className={styles.headerActions}>
+          <button className={styles.settingsBtn} onClick={() => setIsInvoiceSettingsOpen(true)}>
+            <FiSettings size={18} />
+            Invoice Settings
+          </button>
+          <button className={styles.addBtn} onClick={() => openClientModal()}>
+            <FiPlus size={18} />
+            Add Client
+          </button>
+        </div>
       </div>
 
       {/* Clients Grid */}
@@ -250,6 +258,13 @@ export default function ClientsClient({ initialClients, initialProjects }: Clien
             Add Your First Client
           </button>
         </div>
+      )}
+
+      {/* Invoice Settings Modal */}
+      {isInvoiceSettingsOpen && (
+        <InvoiceSettingsModal
+          onClose={() => setIsInvoiceSettingsOpen(false)}
+        />
       )}
 
       {/* Client Modal */}
