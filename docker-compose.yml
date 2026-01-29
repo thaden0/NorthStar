@@ -10,6 +10,7 @@ services:
       - AUTH_SECRET=${AUTH_SECRET}
       - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
       - AGENT_SERVICE_URL=http://192.168.1.123:3002
+      - GOOGLE_SERVICE_URL=http://192.168.1.123:3004
       - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:-internal-secret}
     depends_on:
       db:
