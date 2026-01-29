@@ -432,12 +432,21 @@ model InvoiceSettings {
   businessEmail     String?
   businessPhone     String?
   businessAddress   String?  @db.Text
-  logoUrl           String?
+  businessWebsite   String?  // Company website
+  logoUrl           String?  // Small logo for header
+  letterheadUrl     String?  // Full-width letterhead image
+  accentColor       String?  @default("#3b82f6") // Brand color for invoice
   defaultTaxRate    Float    @default(0)
   defaultPaymentTerms String? @db.Text
   defaultNotes      String?  @db.Text
   invoicePrefix     String   @default("INV-")
   nextInvoiceNumber Int      @default(1)
+  bankName          String?  // For payment info section
+  bankAccountNumber String?
+  bankRoutingNumber String?
+  paypalEmail       String?
+  venmoHandle       String?
+  footerText        String?  @db.Text // Custom footer message
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 

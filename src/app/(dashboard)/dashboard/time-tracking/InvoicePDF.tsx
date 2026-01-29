@@ -1,102 +1,193 @@
 import React from 'react';
-import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
+/* eslint-disable jsx-a11y/alt-text */
+import { Document, Page, Text, View, StyleSheet, Image, Link } from '@react-pdf/renderer';
 import { format } from 'date-fns';
 import type { InvoiceSettings } from '@/types/timeTracking';
 
-// Create styles
-const styles = StyleSheet.create({
+// Professional invoice styles with modern design
+const createStyles = (accentColor: string = '#3b82f6') => StyleSheet.create({
   page: {
-    padding: 40,
-    fontSize: 10,
+    padding: 0,
+    fontSize: 9,
     fontFamily: 'Helvetica',
-    color: '#333333',
+    color: '#374151',
+    backgroundColor: '#ffffff',
   },
+  // Letterhead section (full width at top)
+  letterhead: {
+    width: '100%',
+    height: 100,
+    marginBottom: 0,
+  },
+  letterheadImage: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+  },
+  // Main content with padding
+  content: {
+    padding: 40,
+    paddingTop: 30,
+  },
+  // Header with logo and invoice title
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 30,
   },
+  logoSection: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    maxWidth: '55%',
+  },
+  logo: {
+    width: 60,
+    height: 60,
+    marginRight: 15,
+    objectFit: 'contain',
+  },
   businessInfo: {
-    maxWidth: '50%',
+    flex: 1,
   },
   businessName: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 'bold',
-    color: '#1a1a2e',
-    marginBottom: 4,
+    color: '#111827',
+    marginBottom: 3,
   },
   businessDetails: {
-    color: '#666666',
+    fontSize: 9,
+    color: '#6b7280',
     lineHeight: 1.5,
   },
-  invoiceTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#3b82f6',
+  businessLink: {
+    color: accentColor,
+    textDecoration: 'none',
+  },
+  invoiceTitleSection: {
     textAlign: 'right',
+  },
+  invoiceTitle: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: accentColor,
+    letterSpacing: 2,
   },
   invoiceNumber: {
-    fontSize: 12,
-    textAlign: 'right',
+    fontSize: 11,
+    color: '#6b7280',
     marginTop: 4,
-    color: '#666666',
   },
-  divider: {
-    height: 1,
-    backgroundColor: '#e0e0e0',
-    marginVertical: 20,
+  invoiceStatus: {
+    backgroundColor: accentColor,
+    color: '#ffffff',
+    padding: '4 12',
+    borderRadius: 4,
+    fontSize: 8,
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+    marginTop: 8,
+    alignSelf: 'flex-end',
   },
+  // Accent bar
+  accentBar: {
+    height: 3,
+    backgroundColor: accentColor,
+    marginVertical: 25,
+  },
+  // Info section with bill to and invoice details
   infoSection: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 30,
   },
-  infoColumn: {
+  infoBox: {
     width: '48%',
+  },
+  infoBoxHighlight: {
+    backgroundColor: '#f9fafb',
+    padding: 15,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
   },
   infoLabel: {
     fontSize: 8,
     fontWeight: 'bold',
-    color: '#888888',
+    color: accentColor,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 4,
+    letterSpacing: 1,
+    marginBottom: 8,
   },
   infoValue: {
-    fontSize: 11,
-    lineHeight: 1.5,
+    fontSize: 10,
+    lineHeight: 1.6,
+    color: '#374151',
   },
+  infoValueBold: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    color: '#111827',
+    marginBottom: 2,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  infoRowLabel: {
+    fontSize: 9,
+    color: '#6b7280',
+  },
+  infoRowValue: {
+    fontSize: 9,
+    fontWeight: 'bold',
+    color: '#111827',
+  },
+  // Table
   table: {
-    marginTop: 20,
+    marginTop: 10,
   },
   tableHeader: {
     flexDirection: 'row',
-    backgroundColor: '#f8f9fa',
+    backgroundColor: accentColor,
     paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: '#e0e0e0',
+    paddingHorizontal: 12,
+    borderRadius: 4,
   },
   tableHeaderCell: {
     fontSize: 9,
     fontWeight: 'bold',
-    color: '#666666',
+    color: '#ffffff',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   tableRow: {
     flexDirection: 'row',
-    paddingVertical: 10,
-    paddingHorizontal: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
     borderBottomWidth: 1,
-    borderColor: '#f0f0f0',
+    borderColor: '#e5e7eb',
+  },
+  tableRowAlt: {
+    backgroundColor: '#f9fafb',
   },
   tableCell: {
-    fontSize: 10,
+    fontSize: 9,
+    color: '#374151',
   },
   descriptionCell: {
     flex: 1,
+    paddingRight: 10,
+  },
+  descriptionText: {
+    fontSize: 10,
+    color: '#111827',
+    marginBottom: 2,
+  },
+  descriptionSubtext: {
+    fontSize: 8,
+    color: '#9ca3af',
   },
   qtyCell: {
     width: 60,
@@ -107,78 +198,154 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   amountCell: {
-    width: 80,
+    width: 90,
     textAlign: 'right',
   },
-  totalsSection: {
-    marginTop: 20,
-    paddingTop: 10,
-    borderTopWidth: 2,
-    borderColor: '#e0e0e0',
+  // Totals section
+  totalsWrapper: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 25,
+  },
+  totalsBox: {
+    width: 250,
   },
   totalsRow: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginBottom: 6,
+    justifyContent: 'space-between',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
   },
   totalsLabel: {
-    width: 100,
-    textAlign: 'right',
-    marginRight: 20,
-    color: '#666666',
+    fontSize: 9,
+    color: '#6b7280',
   },
   totalsValue: {
-    width: 80,
-    textAlign: 'right',
+    fontSize: 9,
+    color: '#374151',
+    fontWeight: 'bold',
   },
-  totalsFinal: {
+  totalsFinalRow: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginTop: 10,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderColor: '#e0e0e0',
+    justifyContent: 'space-between',
+    backgroundColor: accentColor,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 4,
+    marginTop: 6,
   },
   totalsFinalLabel: {
-    width: 100,
-    textAlign: 'right',
-    marginRight: 20,
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: 'bold',
-    color: '#1a1a2e',
+    color: '#ffffff',
   },
   totalsFinalValue: {
-    width: 80,
-    textAlign: 'right',
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#3b82f6',
+    color: '#ffffff',
   },
-  footer: {
-    marginTop: 40,
+  // Payment section
+  paymentSection: {
+    marginTop: 35,
+    flexDirection: 'row',
+    gap: 20,
   },
-  footerSection: {
-    marginBottom: 20,
+  paymentBox: {
+    flex: 1,
+    backgroundColor: '#f9fafb',
+    padding: 15,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
   },
-  footerLabel: {
+  paymentTitle: {
     fontSize: 9,
     fontWeight: 'bold',
-    color: '#888888',
+    color: accentColor,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 10,
+  },
+  paymentText: {
+    fontSize: 9,
+    color: '#374151',
+    lineHeight: 1.5,
+  },
+  paymentRow: {
+    flexDirection: 'row',
+    marginBottom: 4,
+  },
+  paymentLabel: {
+    width: 80,
+    fontSize: 8,
+    color: '#6b7280',
+  },
+  paymentValue: {
+    flex: 1,
+    fontSize: 9,
+    color: '#111827',
+    fontWeight: 'bold',
+  },
+  // Notes and Terms
+  notesSection: {
+    marginTop: 25,
+  },
+  notesBox: {
+    marginBottom: 15,
+  },
+  notesLabel: {
+    fontSize: 9,
+    fontWeight: 'bold',
+    color: accentColor,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: 6,
   },
-  footerText: {
-    fontSize: 10,
-    color: '#666666',
-    lineHeight: 1.5,
+  notesText: {
+    fontSize: 9,
+    color: '#6b7280',
+    lineHeight: 1.6,
   },
-  thankYou: {
-    marginTop: 40,
+  // Footer
+  footer: {
+    position: 'absolute',
+    bottom: 30,
+    left: 40,
+    right: 40,
     textAlign: 'center',
-    fontSize: 12,
-    color: '#3b82f6',
+    paddingTop: 15,
+    borderTopWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  footerText: {
+    fontSize: 8,
+    color: '#9ca3af',
+  },
+  footerBrand: {
+    fontSize: 9,
+    color: accentColor,
     fontWeight: 'bold',
+    marginTop: 4,
+  },
+  // Thank you badge
+  thankYouBadge: {
+    marginTop: 30,
+    backgroundColor: '#f0fdf4',
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+    padding: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  thankYouText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#16a34a',
+  },
+  thankYouSubtext: {
+    fontSize: 9,
+    color: '#22c55e',
+    marginTop: 4,
   },
 });
 
@@ -197,6 +364,7 @@ interface InvoicePDFProps {
     total: number;
     notes: string | null;
     terms: string | null;
+    status?: 'draft' | 'sent' | 'paid' | 'overdue';
     lineItems: Array<{
       description: string;
       quantity: number;
@@ -208,8 +376,11 @@ interface InvoicePDFProps {
 }
 
 export default function InvoicePDF({ invoice, settings }: InvoicePDFProps) {
+  const accentColor = settings?.accentColor || '#3b82f6';
+  const styles = createStyles(accentColor);
+
   const formatCurrency = (amount: number) => {
-    return `$${amount.toFixed(2)}`;
+    return `$${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   const formatDate = (date: Date | string) => {
@@ -217,123 +388,219 @@ export default function InvoicePDF({ invoice, settings }: InvoicePDFProps) {
     return format(d, 'MMMM d, yyyy');
   };
 
+  const hasPaymentInfo = settings?.bankName || settings?.paypalEmail || settings?.venmoHandle;
+
   return (
     <Document>
       <Page size="A4" style={styles.page}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.businessInfo}>
-            <Text style={styles.businessName}>
-              {settings?.businessName || 'Your Business Name'}
-            </Text>
-            <Text style={styles.businessDetails}>
-              {settings?.businessEmail && `${settings.businessEmail}\n`}
-              {settings?.businessPhone && `${settings.businessPhone}\n`}
-              {settings?.businessAddress || ''}
-            </Text>
+        {/* Letterhead Image (if provided) */}
+        {settings?.letterheadUrl && (
+          <View style={styles.letterhead}>
+            <Image src={settings.letterheadUrl} style={styles.letterheadImage} />
           </View>
-          <View>
-            <Text style={styles.invoiceTitle}>INVOICE</Text>
-            <Text style={styles.invoiceNumber}>{invoice.invoiceNumber}</Text>
-          </View>
-        </View>
+        )}
 
-        <View style={styles.divider} />
-
-        {/* Bill To & Invoice Info */}
-        <View style={styles.infoSection}>
-          <View style={styles.infoColumn}>
-            <Text style={styles.infoLabel}>Bill To</Text>
-            <Text style={styles.infoValue}>
-              {invoice.clientName}
-              {invoice.clientEmail && `\n${invoice.clientEmail}`}
-              {invoice.clientAddress && `\n${invoice.clientAddress}`}
-            </Text>
+        <View style={styles.content}>
+          {/* Header */}
+          <View style={styles.header}>
+            <View style={styles.logoSection}>
+              {settings?.logoUrl && (
+                <Image src={settings.logoUrl} style={styles.logo} />
+              )}
+              <View style={styles.businessInfo}>
+                <Text style={styles.businessName}>
+                  {settings?.businessName || 'Your Business'}
+                </Text>
+                <Text style={styles.businessDetails}>
+                  {settings?.businessAddress && `${settings.businessAddress}\n`}
+                  {settings?.businessEmail && `${settings.businessEmail}\n`}
+                  {settings?.businessPhone && `${settings.businessPhone}`}
+                </Text>
+                {settings?.businessWebsite && (
+                  <Link src={settings.businessWebsite} style={styles.businessLink}>
+                    {settings.businessWebsite.replace(/^https?:\/\//, '')}
+                  </Link>
+                )}
+              </View>
+            </View>
+            <View style={styles.invoiceTitleSection}>
+              <Text style={styles.invoiceTitle}>INVOICE</Text>
+              <Text style={styles.invoiceNumber}>{invoice.invoiceNumber}</Text>
+              {invoice.status && (
+                <Text style={styles.invoiceStatus}>
+                  {invoice.status.toUpperCase()}
+                </Text>
+              )}
+            </View>
           </View>
-          <View style={styles.infoColumn}>
-            <Text style={styles.infoLabel}>Invoice Date</Text>
-            <Text style={styles.infoValue}>{formatDate(invoice.issueDate)}</Text>
-            {invoice.dueDate && (
-              <>
-                <Text style={{ ...styles.infoLabel, marginTop: 10 }}>Due Date</Text>
-                <Text style={styles.infoValue}>{formatDate(invoice.dueDate)}</Text>
-              </>
+
+          {/* Accent Bar */}
+          <View style={styles.accentBar} />
+
+          {/* Bill To & Invoice Details */}
+          <View style={styles.infoSection}>
+            <View style={[styles.infoBox, styles.infoBoxHighlight]}>
+              <Text style={styles.infoLabel}>Bill To</Text>
+              <Text style={styles.infoValueBold}>{invoice.clientName}</Text>
+              <Text style={styles.infoValue}>
+                {invoice.clientEmail && `${invoice.clientEmail}\n`}
+                {invoice.clientAddress || ''}
+              </Text>
+            </View>
+            <View style={styles.infoBox}>
+              <View style={styles.infoRow}>
+                <Text style={styles.infoRowLabel}>Invoice Date</Text>
+                <Text style={styles.infoRowValue}>{formatDate(invoice.issueDate)}</Text>
+              </View>
+              {invoice.dueDate && (
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoRowLabel}>Due Date</Text>
+                  <Text style={styles.infoRowValue}>{formatDate(invoice.dueDate)}</Text>
+                </View>
+              )}
+              <View style={styles.infoRow}>
+                <Text style={styles.infoRowLabel}>Invoice Number</Text>
+                <Text style={styles.infoRowValue}>{invoice.invoiceNumber}</Text>
+              </View>
+              <View style={[styles.infoRow, { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderColor: '#e5e7eb' }]}>
+                <Text style={[styles.infoRowLabel, { fontWeight: 'bold' }]}>Amount Due</Text>
+                <Text style={[styles.infoRowValue, { fontSize: 12, color: accentColor }]}>
+                  {formatCurrency(invoice.total)}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Line Items Table */}
+          <View style={styles.table}>
+            {/* Table Header */}
+            <View style={styles.tableHeader}>
+              <Text style={[styles.tableHeaderCell, styles.descriptionCell]}>Description</Text>
+              <Text style={[styles.tableHeaderCell, styles.qtyCell]}>Qty</Text>
+              <Text style={[styles.tableHeaderCell, styles.rateCell]}>Rate</Text>
+              <Text style={[styles.tableHeaderCell, styles.amountCell]}>Amount</Text>
+            </View>
+
+            {/* Table Rows */}
+            {invoice.lineItems.map((item, index) => (
+              <View 
+                key={index} 
+                style={[styles.tableRow, index % 2 === 1 ? styles.tableRowAlt : {}]}
+              >
+                <View style={styles.descriptionCell}>
+                  <Text style={styles.descriptionText}>{item.description}</Text>
+                </View>
+                <Text style={[styles.tableCell, styles.qtyCell]}>
+                  {item.quantity.toFixed(2)}
+                </Text>
+                <Text style={[styles.tableCell, styles.rateCell]}>
+                  {formatCurrency(item.rate)}
+                </Text>
+                <Text style={[styles.tableCell, styles.amountCell, { fontWeight: 'bold' }]}>
+                  {formatCurrency(item.amount)}
+                </Text>
+              </View>
+            ))}
+          </View>
+
+          {/* Totals */}
+          <View style={styles.totalsWrapper}>
+            <View style={styles.totalsBox}>
+              <View style={styles.totalsRow}>
+                <Text style={styles.totalsLabel}>Subtotal</Text>
+                <Text style={styles.totalsValue}>{formatCurrency(invoice.subtotal)}</Text>
+              </View>
+              {invoice.taxRate > 0 && (
+                <View style={styles.totalsRow}>
+                  <Text style={styles.totalsLabel}>Tax ({invoice.taxRate}%)</Text>
+                  <Text style={styles.totalsValue}>{formatCurrency(invoice.taxAmount)}</Text>
+                </View>
+              )}
+              <View style={styles.totalsFinalRow}>
+                <Text style={styles.totalsFinalLabel}>Total Due</Text>
+                <Text style={styles.totalsFinalValue}>{formatCurrency(invoice.total)}</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Payment Information */}
+          {hasPaymentInfo && (
+            <View style={styles.paymentSection}>
+              {settings?.bankName && (
+                <View style={styles.paymentBox}>
+                  <Text style={styles.paymentTitle}>Bank Transfer</Text>
+                  <View style={styles.paymentRow}>
+                    <Text style={styles.paymentLabel}>Bank</Text>
+                    <Text style={styles.paymentValue}>{settings.bankName}</Text>
+                  </View>
+                  {settings.bankAccountNumber && (
+                    <View style={styles.paymentRow}>
+                      <Text style={styles.paymentLabel}>Account</Text>
+                      <Text style={styles.paymentValue}>{settings.bankAccountNumber}</Text>
+                    </View>
+                  )}
+                  {settings.bankRoutingNumber && (
+                    <View style={styles.paymentRow}>
+                      <Text style={styles.paymentLabel}>Routing</Text>
+                      <Text style={styles.paymentValue}>{settings.bankRoutingNumber}</Text>
+                    </View>
+                  )}
+                </View>
+              )}
+              {(settings?.paypalEmail || settings?.venmoHandle) && (
+                <View style={styles.paymentBox}>
+                  <Text style={styles.paymentTitle}>Online Payment</Text>
+                  {settings?.paypalEmail && (
+                    <View style={styles.paymentRow}>
+                      <Text style={styles.paymentLabel}>PayPal</Text>
+                      <Text style={styles.paymentValue}>{settings.paypalEmail}</Text>
+                    </View>
+                  )}
+                  {settings?.venmoHandle && (
+                    <View style={styles.paymentRow}>
+                      <Text style={styles.paymentLabel}>Venmo</Text>
+                      <Text style={styles.paymentValue}>@{settings.venmoHandle}</Text>
+                    </View>
+                  )}
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Notes & Terms */}
+          {(invoice.terms || invoice.notes) && (
+            <View style={styles.notesSection}>
+              {invoice.terms && (
+                <View style={styles.notesBox}>
+                  <Text style={styles.notesLabel}>Payment Terms</Text>
+                  <Text style={styles.notesText}>{invoice.terms}</Text>
+                </View>
+              )}
+              {invoice.notes && (
+                <View style={styles.notesBox}>
+                  <Text style={styles.notesLabel}>Notes</Text>
+                  <Text style={styles.notesText}>{invoice.notes}</Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Thank You Badge */}
+          <View style={styles.thankYouBadge}>
+            <Text style={styles.thankYouText}>Thank You for Your Business!</Text>
+            <Text style={styles.thankYouSubtext}>We appreciate your trust and look forward to working with you again.</Text>
+          </View>
+
+          {/* Footer */}
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>
+              {settings?.footerText || `${settings?.businessName || 'Your Business'} • ${invoice.invoiceNumber}`}
+            </Text>
+            {settings?.businessWebsite && (
+              <Text style={styles.footerBrand}>{settings.businessWebsite.replace(/^https?:\/\//, '')}</Text>
             )}
           </View>
         </View>
-
-        {/* Line Items Table */}
-        <View style={styles.table}>
-          {/* Table Header */}
-          <View style={styles.tableHeader}>
-            <Text style={{ ...styles.tableHeaderCell, ...styles.descriptionCell }}>
-              Description
-            </Text>
-            <Text style={{ ...styles.tableHeaderCell, ...styles.qtyCell }}>
-              Qty
-            </Text>
-            <Text style={{ ...styles.tableHeaderCell, ...styles.rateCell }}>
-              Rate
-            </Text>
-            <Text style={{ ...styles.tableHeaderCell, ...styles.amountCell }}>
-              Amount
-            </Text>
-          </View>
-
-          {/* Table Rows */}
-          {invoice.lineItems.map((item, index) => (
-            <View key={index} style={styles.tableRow}>
-              <Text style={{ ...styles.tableCell, ...styles.descriptionCell }}>
-                {item.description}
-              </Text>
-              <Text style={{ ...styles.tableCell, ...styles.qtyCell }}>
-                {item.quantity.toFixed(2)}
-              </Text>
-              <Text style={{ ...styles.tableCell, ...styles.rateCell }}>
-                {formatCurrency(item.rate)}
-              </Text>
-              <Text style={{ ...styles.tableCell, ...styles.amountCell }}>
-                {formatCurrency(item.amount)}
-              </Text>
-            </View>
-          ))}
-        </View>
-
-        {/* Totals */}
-        <View style={styles.totalsSection}>
-          <View style={styles.totalsRow}>
-            <Text style={styles.totalsLabel}>Subtotal</Text>
-            <Text style={styles.totalsValue}>{formatCurrency(invoice.subtotal)}</Text>
-          </View>
-          {invoice.taxRate > 0 && (
-            <View style={styles.totalsRow}>
-              <Text style={styles.totalsLabel}>Tax ({invoice.taxRate}%)</Text>
-              <Text style={styles.totalsValue}>{formatCurrency(invoice.taxAmount)}</Text>
-            </View>
-          )}
-          <View style={styles.totalsFinal}>
-            <Text style={styles.totalsFinalLabel}>Total Due</Text>
-            <Text style={styles.totalsFinalValue}>{formatCurrency(invoice.total)}</Text>
-          </View>
-        </View>
-
-        {/* Footer */}
-        <View style={styles.footer}>
-          {invoice.terms && (
-            <View style={styles.footerSection}>
-              <Text style={styles.footerLabel}>Payment Terms</Text>
-              <Text style={styles.footerText}>{invoice.terms}</Text>
-            </View>
-          )}
-          {invoice.notes && (
-            <View style={styles.footerSection}>
-              <Text style={styles.footerLabel}>Notes</Text>
-              <Text style={styles.footerText}>{invoice.notes}</Text>
-            </View>
-          )}
-        </View>
-
-        <Text style={styles.thankYou}>Thank you for your business!</Text>
       </Page>
     </Document>
   );

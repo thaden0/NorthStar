@@ -100,12 +100,21 @@ export interface InvoiceSettings {
   businessEmail: string | null;
   businessPhone: string | null;
   businessAddress: string | null;
+  businessWebsite: string | null;
   logoUrl: string | null;
+  letterheadUrl: string | null;
+  accentColor: string | null;
   defaultTaxRate: number;
   defaultPaymentTerms: string | null;
   defaultNotes: string | null;
   invoicePrefix: string;
   nextInvoiceNumber: number;
+  bankName: string | null;
+  bankAccountNumber: string | null;
+  bankRoutingNumber: string | null;
+  paypalEmail: string | null;
+  venmoHandle: string | null;
+  footerText: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

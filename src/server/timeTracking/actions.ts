@@ -465,15 +465,31 @@ export async function updateInvoiceSettingsAction(formData: FormData): Promise<A
   const { userId } = authResult;
 
   const data: Record<string, unknown> = {
+    // Business Info
     businessName: (formData.get('businessName') as string) || null,
     businessEmail: (formData.get('businessEmail') as string) || null,
     businessPhone: (formData.get('businessPhone') as string) || null,
     businessAddress: (formData.get('businessAddress') as string) || null,
+    businessWebsite: (formData.get('businessWebsite') as string) || null,
+    
+    // Branding
     logoUrl: (formData.get('logoUrl') as string) || null,
+    letterheadUrl: (formData.get('letterheadUrl') as string) || null,
+    accentColor: (formData.get('accentColor') as string) || '#3b82f6',
+    
+    // Invoice defaults
     defaultTaxRate: parseFloat(formData.get('defaultTaxRate') as string) || 0,
     defaultPaymentTerms: (formData.get('defaultPaymentTerms') as string) || null,
     defaultNotes: (formData.get('defaultNotes') as string) || null,
     invoicePrefix: (formData.get('invoicePrefix') as string) || 'INV-',
+    footerText: (formData.get('footerText') as string) || null,
+    
+    // Payment Info
+    bankName: (formData.get('bankName') as string) || null,
+    bankAccountNumber: (formData.get('bankAccountNumber') as string) || null,
+    bankRoutingNumber: (formData.get('bankRoutingNumber') as string) || null,
+    paypalEmail: (formData.get('paypalEmail') as string) || null,
+    venmoHandle: (formData.get('venmoHandle') as string) || null,
   };
 
   // Only update nextInvoiceNumber if explicitly provided
