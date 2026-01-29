@@ -175,4 +175,20 @@ export class GmailController {
     const count = await this.gmailService.getUnreadCount(req.user.userId, accountEmail);
     return { count, accountEmail };
   }
+
+  @Post('sync')
+  @ApiOperation({ summary: 'Force sync emails from Google' })
+  @ApiQuery({ name: 'accountEmail', required: false, description: 'Account to sync' })
+  @ApiResponse({ status: 200, description: 'Sync completed' })
+  async syncEmails(
+    @Req() req: AuthenticatedRequest,
+    @Query('accountEmail') accountEmail?: string,
+  ) {
+    const result = await this.gmailService.forceSync(req.user.userId, accountEmail);
+    return { 
+      success: true, 
+      synced: result.synced,
+      accountEmail: result.accountEmail,
+    };
+  }
 }
