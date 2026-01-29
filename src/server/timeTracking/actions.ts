@@ -594,50 +594,67 @@ export async function createInvoiceAction(data: {
   const total = subtotal + taxAmount;
 
   // Create invoice with line items
-  const invoice = await db.invoice.create({
-    data: {
+  try {
+    console.log('[createInvoiceAction] Creating invoice with data:', {
       userId,
       invoiceNumber,
       clientId: client.id,
       clientName: client.name,
-      clientEmail: client.email,
-      clientAddress: client.address,
-      issueDate: new Date(),
-      dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
-      subtotal,
-      taxRate,
-      taxAmount,
-      total,
-      notes: data.notes || settings?.defaultNotes || null,
-      terms: data.terms || settings?.defaultPaymentTerms || null,
-      status: 'draft',
-      lineItems: {
-        create: lineItems,
+      lineItemsCount: lineItems.length,
+      timeEntriesCount: timeEntries.length,
+    });
+
+    const invoice = await db.invoice.create({
+      data: {
+        userId,
+        invoiceNumber,
+        clientId: client.id,
+        clientName: client.name,
+        clientEmail: client.email,
+        clientAddress: client.address,
+        issueDate: new Date(),
+        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+        subtotal,
+        taxRate,
+        taxAmount,
+        total,
+        notes: data.notes || settings?.defaultNotes || null,
+        terms: data.terms || settings?.defaultPaymentTerms || null,
+        status: 'draft',
+        lineItems: {
+          create: lineItems,
+        },
+        timeEntries: {
+          connect: timeEntries.map(e => ({ id: e.id })),
+        },
       },
-      timeEntries: {
-        connect: timeEntries.map(e => ({ id: e.id })),
+      include: {
+        lineItems: true,
+        timeEntries: true,
       },
-    },
-    include: {
-      lineItems: true,
-      timeEntries: true,
-    },
-  });
+    });
 
-  // Mark time entries as invoiced
-  await db.timeEntry.updateMany({
-    where: { id: { in: timeEntries.map(e => e.id) } },
-    data: { invoiced: true, invoiceId: invoice.id },
-  });
+    console.log('[createInvoiceAction] Invoice created successfully:', invoice.id);
 
-  // Increment invoice number
-  await db.invoiceSettings.update({
-    where: { userId },
-    data: { nextInvoiceNumber: nextNumber + 1 },
-  });
+    // Mark time entries as invoiced
+    await db.timeEntry.updateMany({
+      where: { id: { in: timeEntries.map(e => e.id) } },
+      data: { invoiced: true, invoiceId: invoice.id },
+    });
 
-  revalidatePath('/dashboard/time-tracking');
-  return { success: true, data: invoice };
+    // Increment invoice number
+    await db.invoiceSettings.update({
+      where: { userId },
+      data: { nextInvoiceNumber: nextNumber + 1 },
+    });
+
+    revalidatePath('/dashboard/time-tracking');
+    return { success: true, data: invoice };
+  } catch (error) {
+    console.error('[createInvoiceAction] Error creating invoice:', error);
+    console.error('[createInvoiceAction] Error details:', JSON.stringify(error, null, 2));
+    return { success: false, error: `Failed to create invoice: ${error instanceof Error ? error.message : 'Unknown error'}` };
+  }
 }
 
 export async function getInvoicesAction(): Promise<ActionResult> {
