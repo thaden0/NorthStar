@@ -33,7 +33,12 @@ export class PlaywrightService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit() {
-    await this.initBrowser();
+    try {
+      await this.initBrowser();
+    } catch (error) {
+      this.logger.error(`Failed to initialize Playwright browser. Web browsing will be unavailable: ${error}`);
+      // Don't throw - let the service continue without browsing capability
+    }
   }
 
   async onModuleDestroy() {
@@ -46,7 +51,7 @@ export class PlaywrightService implements OnModuleInit, OnModuleDestroy {
       this.browser = await chromium.launch({
         headless: this.headless,
         executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
       });
       this.logger.log('Playwright browser initialized');
     }
