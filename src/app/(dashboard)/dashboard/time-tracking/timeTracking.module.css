@@ -2,6 +2,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
+  padding: var(--space-6);
   min-height: calc(100vh - var(--header-height) - var(--space-16));
 }
 
@@ -295,11 +296,24 @@
   z-index: 0;
 }
 
-/* Delete button on time blocks */
-.timeBlockDeleteBtn {
+/* Action buttons on time blocks */
+.timeBlockActions {
   position: absolute;
   top: 4px;
   right: 4px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+  z-index: 10;
+}
+
+.timeBlock:hover .timeBlockActions {
+  opacity: 1;
+}
+
+.timeBlockEditBtn,
+.timeBlockDeleteBtn {
   width: 20px;
   height: 20px;
   display: flex;
@@ -310,13 +324,12 @@
   border-radius: var(--radius-sm);
   color: white;
   cursor: pointer;
-  opacity: 0;
   transition: all var(--transition-fast);
-  z-index: 10;
 }
 
-.timeBlock:hover .timeBlockDeleteBtn {
-  opacity: 1;
+.timeBlockEditBtn:hover {
+  background: var(--blue-electric);
+  transform: scale(1.1);
 }
 
 .timeBlockDeleteBtn:hover {

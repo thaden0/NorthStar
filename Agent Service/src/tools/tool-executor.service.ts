@@ -7,6 +7,7 @@ import { MemoryToolsService } from '../memory/memory-tools.service';
 import { WikipediaService } from './wikipedia.service';
 import { RedditService } from './reddit.service';
 import { BackgroundAgentService } from './background-agent.service';
+import { TimeTrackingService } from './time-tracking.service';
 import { ParsedToolCall } from './tool-parser.service';
 
 /**
@@ -77,12 +78,14 @@ export class ToolExecutorService {
     private redditService: RedditService,
     @Inject(forwardRef(() => BackgroundAgentService))
     private backgroundAgentService: BackgroundAgentService,
+    private timeTrackingService: TimeTrackingService,
   ) {
     this.registerDefaultTools();
     this.registerMemoryTools();
     this.registerWikipediaTools();
     this.registerRedditTools();
     this.registerBackgroundTools();
+    this.registerTimeTrackingTools();
   }
 
   /**
@@ -702,6 +705,218 @@ export class ToolExecutorService {
     });
 
     this.logger.log('Registered background agent tools');
+  }
+
+  /**
+   * Register time tracking / calendar tools
+   */
+  private registerTimeTrackingTools(): void {
+    // Get time entries tool
+    this.registerTool({
+      name: 'get_time_entries',
+      description: 'Get time entries from the calendar for a date range. Use this to see what the user has scheduled or has worked on.',
+      parameters: {
+        startDate: { type: 'string', description: 'Start date in ISO format (e.g., "2026-01-28")', required: true },
+        endDate: { type: 'string', description: 'End date in ISO format (e.g., "2026-01-28")', required: true },
+      },
+      execute: async (args, context) => {
+        const startDate = new Date(args.startDate as string);
+        const endDate = new Date(args.endDate as string);
+        context.onStatus?.('Fetching time entries...');
+        
+        const result = await this.timeTrackingService.getTimeEntries(
+          context.userId,
+          startDate,
+          endDate,
+          context.authToken
+        );
+        
+        if (!result.success) {
+          return { success: false, error: result.error, summary: `Failed: ${result.error}` };
+        }
+        
+        return {
+          success: true,
+          data: {
+            entryCount: result.data?.length || 0,
+            entries: result.data?.map(e => ({
+              id: e.id,
+              clientId: e.clientId,
+              projectId: e.projectId,
+              startTimeUtc: e.startTimeUtc,
+              endTimeUtc: e.endTimeUtc,
+              description: e.description,
+              billable: e.billable,
+            })),
+          },
+          summary: `Found ${result.data?.length || 0} time entries`,
+        };
+      },
+    });
+
+    // Create time entry tool
+    this.registerTool({
+      name: 'create_time_entry',
+      description: 'Create a new time entry in the calendar. Use this to schedule work time, block out time, or log hours for a client/project.',
+      parameters: {
+        startTimeUtc: { type: 'string', description: 'Start time in ISO format (e.g., "2026-01-28T09:00:00Z")', required: true },
+        endTimeUtc: { type: 'string', description: 'End time in ISO format (e.g., "2026-01-28T10:00:00Z")', required: true },
+        clientId: { type: 'string', description: 'Client ID to associate with the entry (optional)' },
+        projectId: { type: 'string', description: 'Project ID to associate with the entry (optional)' },
+        description: { type: 'string', description: 'Description of the work (optional)' },
+        billable: { type: 'boolean', description: 'Whether this time is billable (default: true)' },
+      },
+      execute: async (args, context) => {
+        context.onStatus?.('Creating time entry...');
+        
+        const result = await this.timeTrackingService.createTimeEntry(
+          context.userId,
+          {
+            startTimeUtc: args.startTimeUtc as string,
+            endTimeUtc: args.endTimeUtc as string,
+            clientId: args.clientId as string,
+            projectId: args.projectId as string,
+            description: args.description as string,
+            billable: args.billable !== undefined ? args.billable as boolean : true,
+          },
+          context.authToken
+        );
+        
+        if (!result.success) {
+          return { success: false, error: result.error, summary: `Failed: ${result.error}` };
+        }
+        
+        return {
+          success: true,
+          data: result.data,
+          summary: `Created time entry from ${args.startTimeUtc} to ${args.endTimeUtc}`,
+        };
+      },
+    });
+
+    // Update time entry tool
+    this.registerTool({
+      name: 'update_time_entry',
+      description: 'Update an existing time entry in the calendar. Use this to modify the time, client, project, or other details of an entry.',
+      parameters: {
+        entryId: { type: 'string', description: 'ID of the time entry to update', required: true },
+        startTimeUtc: { type: 'string', description: 'New start time in ISO format (optional)' },
+        endTimeUtc: { type: 'string', description: 'New end time in ISO format (optional)' },
+        clientId: { type: 'string', description: 'New client ID (optional, set to empty string to remove)' },
+        projectId: { type: 'string', description: 'New project ID (optional, set to empty string to remove)' },
+        description: { type: 'string', description: 'New description (optional)' },
+        billable: { type: 'boolean', description: 'Whether this time is billable (optional)' },
+      },
+      execute: async (args, context) => {
+        const entryId = args.entryId as string;
+        context.onStatus?.(`Updating time entry ${entryId}...`);
+        
+        const updateParams: Record<string, unknown> = {};
+        if (args.startTimeUtc) updateParams.startTimeUtc = args.startTimeUtc;
+        if (args.endTimeUtc) updateParams.endTimeUtc = args.endTimeUtc;
+        if (args.clientId !== undefined) updateParams.clientId = args.clientId || null;
+        if (args.projectId !== undefined) updateParams.projectId = args.projectId || null;
+        if (args.description !== undefined) updateParams.description = args.description || null;
+        if (args.billable !== undefined) updateParams.billable = args.billable;
+        
+        const result = await this.timeTrackingService.updateTimeEntry(
+          context.userId,
+          entryId,
+          updateParams as { startTimeUtc?: string; endTimeUtc?: string },
+          context.authToken
+        );
+        
+        if (!result.success) {
+          return { success: false, error: result.error, summary: `Failed: ${result.error}` };
+        }
+        
+        return {
+          success: true,
+          data: result.data,
+          summary: `Updated time entry ${entryId}`,
+        };
+      },
+    });
+
+    // Delete time entry tool
+    this.registerTool({
+      name: 'delete_time_entry',
+      description: 'Delete a time entry from the calendar.',
+      parameters: {
+        entryId: { type: 'string', description: 'ID of the time entry to delete', required: true },
+      },
+      execute: async (args, context) => {
+        const entryId = args.entryId as string;
+        context.onStatus?.(`Deleting time entry ${entryId}...`);
+        
+        const result = await this.timeTrackingService.deleteTimeEntry(
+          context.userId,
+          entryId,
+          context.authToken
+        );
+        
+        if (!result.success) {
+          return { success: false, error: result.error, summary: `Failed: ${result.error}` };
+        }
+        
+        return {
+          success: true,
+          summary: `Deleted time entry ${entryId}`,
+        };
+      },
+    });
+
+    // Get clients tool
+    this.registerTool({
+      name: 'get_clients',
+      description: 'Get the list of clients available for time tracking.',
+      parameters: {},
+      execute: async (args, context) => {
+        context.onStatus?.('Fetching clients...');
+        
+        const result = await this.timeTrackingService.getClients(context.userId, context.authToken);
+        
+        if (!result.success) {
+          return { success: false, error: result.error, summary: `Failed: ${result.error}` };
+        }
+        
+        return {
+          success: true,
+          data: {
+            clientCount: result.data?.length || 0,
+            clients: result.data,
+          },
+          summary: `Found ${result.data?.length || 0} clients`,
+        };
+      },
+    });
+
+    // Get projects tool
+    this.registerTool({
+      name: 'get_projects',
+      description: 'Get the list of projects available for time tracking.',
+      parameters: {},
+      execute: async (args, context) => {
+        context.onStatus?.('Fetching projects...');
+        
+        const result = await this.timeTrackingService.getProjects(context.userId, context.authToken);
+        
+        if (!result.success) {
+          return { success: false, error: result.error, summary: `Failed: ${result.error}` };
+        }
+        
+        return {
+          success: true,
+          data: {
+            projectCount: result.data?.length || 0,
+            projects: result.data,
+          },
+          summary: `Found ${result.data?.length || 0} projects`,
+        };
+      },
+    });
+
+    this.logger.log('Registered time tracking tools');
   }
 
   /**

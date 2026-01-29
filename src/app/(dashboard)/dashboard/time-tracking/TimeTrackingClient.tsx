@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { format, addDays, isToday, isSameDay, getHours, getMinutes } from 'date-fns';
 import { toZonedTime, fromZonedTime } from 'date-fns-tz';
-import { FiChevronLeft, FiChevronRight, FiFileText, FiX, FiTrash2 } from 'react-icons/fi';
+import { FiChevronLeft, FiChevronRight, FiFileText, FiX, FiTrash2, FiEdit2 } from 'react-icons/fi';
 import { toast } from 'sonner';
 import { useTimeTrackingStore } from '@/stores/timeTracking-store';
 import {
@@ -570,15 +570,29 @@ export default function TimeTrackingClient({ initialClients, initialProjects }: 
                       {/* Resize handle top */}
                       <div className={styles.resizeHandleTop} />
                       
-                      {/* Delete button */}
-                      <button
-                        className={styles.timeBlockDeleteBtn}
-                        onClick={(e) => handleQuickDelete(entry, e)}
-                        onMouseDown={(e) => e.stopPropagation()}
-                        title="Delete"
-                      >
-                        <FiTrash2 size={12} />
-                      </button>
+                      {/* Action buttons */}
+                      <div className={styles.timeBlockActions}>
+                        <button
+                          className={styles.timeBlockEditBtn}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            openEntryModal(entry);
+                          }}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          title="Edit"
+                        >
+                          <FiEdit2 size={12} />
+                        </button>
+                        <button
+                          className={styles.timeBlockDeleteBtn}
+                          onClick={(e) => handleQuickDelete(entry, e)}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          title="Delete"
+                        >
+                          <FiTrash2 size={12} />
+                        </button>
+                      </div>
                       
                       <div className={styles.timeBlockTime}>
                         {format(entry.displayStartTime, 'h:mm a')} - {format(entry.displayEndTime, 'h:mm a')}

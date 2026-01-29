@@ -8,6 +8,7 @@ import { ToolExecutorService } from './tool-executor.service';
 import { WikipediaService } from './wikipedia.service';
 import { RedditService } from './reddit.service';
 import { BackgroundAgentService } from './background-agent.service';
+import { TimeTrackingService } from './time-tracking.service';
 import { CronModule } from '../cron/cron.module';
 import { MemoryModule } from '../memory/memory.module';
 import { DatabaseModule } from '../database/database.module';
@@ -32,6 +33,7 @@ import { SettingsModule } from '../settings/settings.module';
     WikipediaService,
     RedditService,
     BackgroundAgentService,
+    TimeTrackingService,
   ],
   exports: [
     PlaywrightService,
@@ -42,7 +44,7 @@ import { SettingsModule } from '../settings/settings.module';
     WikipediaService,
     RedditService,
     BackgroundAgentService,
+    TimeTrackingService,
   ],
 })
 export class ToolsModule {}
-
