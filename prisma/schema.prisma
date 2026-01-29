@@ -181,13 +181,7 @@ model File {
 
 // ==================== SITE SETTINGS ====================
 
-model SiteSetting {
-  id        String   @id @default(cuid())
-  key       String   @unique
-  value     String   @db.Text
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
+// SiteSetting table removed - replaced by SiteSettings singleton model
 
 // ==================== LOGS ====================
 
@@ -399,4 +393,93 @@ model InvoiceSettings {
   updatedAt         DateTime @updatedAt
 
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ==================== SITE SETTINGS ====================
+// Singleton table - only one row should exist
+
+model SiteSettings {
+  id                    String   @id @default("singleton")
+  
+  // General Settings
+  siteName              String   @default("North Star")
+  siteTagline           String   @default("Personal Dashboard & Portfolio")
+  siteUrl               String   @default("http://localhost:3000")
+  timezone              String   @default("America/Toronto")
+  dateFormat            String   @default("MMM dd, yyyy")
+  timeFormat            String   @default("h:mm a")
+  language              String   @default("en")
+  
+  // Appearance
+  theme                 String   @default("dark")  // dark, light, system
+  accentColor           String   @default("#3B82F6")
+  enableAnimations      Boolean  @default(true)
+  sidebarCollapsed      Boolean  @default(false)
+  compactMode           Boolean  @default(false)
+  
+  // Security Settings
+  sessionDurationDays   Int      @default(30)
+  requireStrongPassword Boolean  @default(true)
+  maxLoginAttempts      Int      @default(5)
+  lockoutDurationMins   Int      @default(15)
+  enable2FA             Boolean  @default(false)
+  
+  // Notification Settings
+  enableEmailNotifications  Boolean @default(true)
+  enablePushNotifications   Boolean @default(false)
+  notificationDigestFreq    String  @default("instant") // instant, daily, weekly
+  quietHoursStart           String? // e.g., "22:00"
+  quietHoursEnd             String? // e.g., "08:00"
+  
+  // AI Settings
+  aiEnabled             Boolean  @default(true)
+  aiDefaultModel        String   @default("qwen2.5:14b")
+  aiMaxTokens           Int      @default(4096)
+  aiTemperature         Float    @default(0.7)
+  aiMemoryEnabled       Boolean  @default(true)
+  aiProactiveMemory     Boolean  @default(true)
+  
+  // Dashboard Settings
+  dashboardLayout       String   @default("default") // default, compact, expanded
+  showWelcomeMessage    Boolean  @default(true)
+  defaultDashboardTab   String   @default("overview")
+  enableQuickActions    Boolean  @default(true)
+  
+  // Portfolio Settings
+  portfolioEnabled      Boolean  @default(true)
+  portfolioPublic       Boolean  @default(true)
+  showContactForm       Boolean  @default(true)
+  enableBlogComments    Boolean  @default(false)
+  
+  // Time Tracking Settings
+  timeTrackingEnabled   Boolean  @default(true)
+  defaultBillableRate   Float    @default(0)
+  trackingReminderTime  String?  // e.g., "17:00"
+  autoStopTimerHours    Int      @default(8)
+  roundTimeTo           Int      @default(15) // minutes
+  
+  // Integration Settings
+  googleCalendarSync    Boolean  @default(false)
+  googleContactsSync    Boolean  @default(false)
+  slackIntegration      Boolean  @default(false)
+  webhooksEnabled       Boolean  @default(false)
+  
+  // Email Settings (SMTP)
+  smtpEnabled           Boolean  @default(false)
+  smtpHost              String?
+  smtpPort              Int      @default(587)
+  smtpUser              String?
+  smtpPassword          String?
+  smtpFromEmail         String?
+  smtpFromName          String?
+  smtpSecure            Boolean  @default(true)
+  
+  // Maintenance
+  maintenanceMode       Boolean  @default(false)
+  maintenanceMessage    String?  @db.Text
+  debugMode             Boolean  @default(false)
+  logRetentionDays      Int      @default(30)
+  
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 }
