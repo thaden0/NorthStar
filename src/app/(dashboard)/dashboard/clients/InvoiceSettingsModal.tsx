@@ -390,13 +390,13 @@ export default function InvoiceSettingsModal({ onClose }: InvoiceSettingsModalPr
                 </h4>
                 <div className={styles.formRow}>
                   <div className={styles.formGroup}>
-                    <label className={styles.label}>PayPal Email</label>
+                    <label className={styles.label}>PayPal.me Link</label>
                     <input
-                      type="email"
+                      type="text"
                       className={styles.input}
                       value={settings.paypalEmail || ''}
                       onChange={(e) => setSettings({ ...settings, paypalEmail: e.target.value })}
-                      placeholder="your@paypal.com"
+                      placeholder="paypal.me/yourname"
                     />
                   </div>
                   <div className={styles.formGroup}>

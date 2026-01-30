@@ -33,61 +33,76 @@ const createStyles = (accentColor: string = '#3b82f6') => StyleSheet.create({
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'flex-start',
     marginBottom: 30,
   },
-  logoSection: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    maxWidth: '55%',
+  // Left side: Logo stacked above business info
+  leftHeaderSection: {
+    flexDirection: 'column',
+    maxWidth: '50%',
   },
   logo: {
-    width: 60,
-    height: 60,
-    marginRight: 15,
+    width: 70,
+    height: 70,
+    marginBottom: 12,
     objectFit: 'contain',
   },
   businessInfo: {
-    flex: 1,
+    flexDirection: 'column',
   },
   businessName: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#111827',
-    marginBottom: 3,
+    marginBottom: 6,
   },
-  businessDetails: {
+  businessAddressLine: {
     fontSize: 9,
     color: '#6b7280',
-    lineHeight: 1.5,
+    marginBottom: 2,
+  },
+  businessContactRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 4,
+  },
+  businessContact: {
+    fontSize: 9,
+    color: '#6b7280',
+    marginRight: 12,
   },
   businessLink: {
+    fontSize: 9,
     color: accentColor,
     textDecoration: 'none',
+    marginTop: 2,
   },
+  // Right side: Invoice title
   invoiceTitleSection: {
-    textAlign: 'right',
+    flexDirection: 'column',
+    alignItems: 'flex-end',
   },
   invoiceTitle: {
-    fontSize: 32,
+    fontSize: 36,
     fontWeight: 'bold',
     color: accentColor,
-    letterSpacing: 2,
+    letterSpacing: 3,
   },
   invoiceNumber: {
     fontSize: 11,
     color: '#6b7280',
-    marginTop: 4,
+    marginTop: 6,
   },
   invoiceStatus: {
     backgroundColor: accentColor,
     color: '#ffffff',
-    padding: '4 12',
+    paddingVertical: 4,
+    paddingHorizontal: 14,
     borderRadius: 4,
     fontSize: 8,
     fontWeight: 'bold',
     textTransform: 'uppercase',
-    marginTop: 8,
-    alignSelf: 'flex-end',
+    marginTop: 10,
   },
   // Accent bar
   accentBar: {
@@ -286,6 +301,13 @@ const createStyles = (accentColor: string = '#3b82f6') => StyleSheet.create({
     color: '#111827',
     fontWeight: 'bold',
   },
+  paymentLink: {
+    flex: 1,
+    fontSize: 9,
+    color: accentColor,
+    fontWeight: 'bold',
+    textDecoration: 'none',
+  },
   // Notes and Terms
   notesSection: {
     marginTop: 25,
@@ -403,7 +425,8 @@ export default function InvoicePDF({ invoice, settings }: InvoicePDFProps) {
         <View style={styles.content}>
           {/* Header */}
           <View style={styles.header}>
-            <View style={styles.logoSection}>
+            {/* Left side: Logo stacked above business info */}
+            <View style={styles.leftHeaderSection}>
               {settings?.logoUrl && (
                 <Image src={settings.logoUrl} style={styles.logo} />
               )}
@@ -411,11 +434,19 @@ export default function InvoicePDF({ invoice, settings }: InvoicePDFProps) {
                 <Text style={styles.businessName}>
                   {settings?.businessName || 'Your Business'}
                 </Text>
-                <Text style={styles.businessDetails}>
-                  {settings?.businessAddress && `${settings.businessAddress}\n`}
-                  {settings?.businessEmail && `${settings.businessEmail}\n`}
-                  {settings?.businessPhone && `${settings.businessPhone}`}
-                </Text>
+                {settings?.businessAddress && settings.businessAddress.split('\n').map((line, idx) => (
+                  <Text key={idx} style={styles.businessAddressLine}>{line}</Text>
+                ))}
+                {(settings?.businessEmail || settings?.businessPhone) && (
+                  <View style={styles.businessContactRow}>
+                    {settings?.businessEmail && (
+                      <Text style={styles.businessContact}>{settings.businessEmail}</Text>
+                    )}
+                    {settings?.businessPhone && (
+                      <Text style={styles.businessContact}>{settings.businessPhone}</Text>
+                    )}
+                  </View>
+                )}
                 {settings?.businessWebsite && (
                   <Link src={settings.businessWebsite} style={styles.businessLink}>
                     {settings.businessWebsite.replace(/^https?:\/\//, '')}
@@ -423,6 +454,7 @@ export default function InvoicePDF({ invoice, settings }: InvoicePDFProps) {
                 )}
               </View>
             </View>
+            {/* Right side: Invoice title */}
             <View style={styles.invoiceTitleSection}>
               <Text style={styles.invoiceTitle}>INVOICE</Text>
               <Text style={styles.invoiceNumber}>{invoice.invoiceNumber}</Text>
@@ -553,7 +585,9 @@ export default function InvoicePDF({ invoice, settings }: InvoicePDFProps) {
                   {settings?.paypalEmail && (
                     <View style={styles.paymentRow}>
                       <Text style={styles.paymentLabel}>PayPal</Text>
-                      <Text style={styles.paymentValue}>{settings.paypalEmail}</Text>
+                      <Link src={settings.paypalEmail.startsWith('http') ? settings.paypalEmail : `https://${settings.paypalEmail}`} style={styles.paymentLink}>
+                        {settings.paypalEmail.replace(/^https?:\/\//, '')}
+                      </Link>
                     </View>
                   )}
                   {settings?.venmoHandle && (
