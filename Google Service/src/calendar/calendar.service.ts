@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { google, calendar_v3 } from 'googleapis';
 import { OAuthService } from '../oauth/oauth.service';
 import { GoogleClientService } from '../oauth/google-client.service';
@@ -14,6 +14,7 @@ export interface CalendarEvent {
   allDay: boolean;
   status: string;
   htmlLink?: string;
+  meetingLink?: string; // Video conference link (Google Meet, Zoom, etc.)
   attendees?: Array<{
     email: string;
     name?: string;
@@ -67,6 +68,19 @@ export class CalendarService {
     const start = isAllDay ? event.start?.date : event.start?.dateTime;
     const end = isAllDay ? event.end?.date : event.end?.dateTime;
 
+    // Extract meeting link from conferenceData or hangoutLink
+    let meetingLink: string | undefined;
+    if (event.conferenceData?.entryPoints) {
+      const videoEntry = event.conferenceData.entryPoints.find(
+        (ep) => ep.entryPointType === 'video'
+      );
+      meetingLink = videoEntry?.uri || undefined;
+    }
+    // Fallback to hangoutLink if no conferenceData
+    if (!meetingLink && event.hangoutLink) {
+      meetingLink = event.hangoutLink;
+    }
+
     return {
       id: event.id!,
       calendarId,
@@ -78,6 +92,7 @@ export class CalendarService {
       allDay: isAllDay,
       status: event.status || 'confirmed',
       htmlLink: event.htmlLink || undefined,
+      meetingLink,
       attendees: event.attendees?.map((a) => ({
         email: a.email!,
         name: a.displayName || undefined,

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import styles from './email.module.css';
+import DailyMeetingsSidebar from './DailyMeetingsSidebar';
 import { 
   FiInbox, FiStar, FiSend, FiFile, FiTrash2, FiAlertCircle,
   FiSearch, FiRefreshCw, FiMoreVertical, FiPaperclip,
@@ -462,6 +463,11 @@ export default function EmailClient({ accountEmail }: EmailClientProps) {
             </button>
           </div>
         </div>
+      )}
+
+      {/* Daily Meetings Sidebar - shows when email is selected */}
+      {selectedEmail && (
+        <DailyMeetingsSidebar accountEmail={accountEmail} />
       )}
 
       {/* Compose Modal */}

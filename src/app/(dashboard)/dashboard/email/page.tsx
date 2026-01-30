@@ -42,16 +42,19 @@ export default function EmailPage() {
           const data = await response.json();
           setGoogleStatus(data);
           
-          // If connected, create account entry (future: fetch all connected accounts)
-          if (data.connected && data.email) {
-            const account: ConnectedAccount = {
-              id: 'primary',
-              email: data.email,
-              name: data.email.split('@')[0],
-              isDefault: true,
-            };
-            setAccounts([account]);
-            setSelectedAccount(account);
+          // If connected, use all accounts from the API response
+          if (data.connected && data.accounts && data.accounts.length > 0) {
+            const mappedAccounts: ConnectedAccount[] = data.accounts.map((acc: { email: string; isDefault?: boolean }, index: number) => ({
+              id: `account-${index}`,
+              email: acc.email,
+              name: acc.email.split('@')[0],
+              isDefault: acc.isDefault || false,
+            }));
+            setAccounts(mappedAccounts);
+            
+            // Select the default account, or the first one if no default
+            const defaultAccount = mappedAccounts.find(a => a.isDefault) || mappedAccounts[0];
+            setSelectedAccount(defaultAccount);
           }
         } else {
           setGoogleStatus({ connected: false });
