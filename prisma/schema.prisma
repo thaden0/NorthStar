@@ -34,6 +34,14 @@ model User {
   invoiceSettings   InvoiceSettings?
   googleAccounts    GoogleAccount[]
   imapAccounts      ImapAccount[]
+  
+  // Social relations
+  socialAccounts    SocialAccount[]
+  friendRequestsSent     Friendship[]  @relation("FriendshipRequester")
+  friendRequestsReceived Friendship[]  @relation("FriendshipAddressee")
+  messagesSent      Message[]  @relation("MessageSender")
+  messagesReceived  Message[]  @relation("MessageReceiver")
+  userStatus        UserStatus?
 
   @@index([email])
 }
@@ -544,4 +552,87 @@ model SiteSettings {
   
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
+}
+
+// ==================== SOCIAL SYSTEM ====================
+
+// Connected social media accounts (Facebook, LinkedIn, Discord, etc.)
+model SocialAccount {
+  id              String    @id @default(cuid())
+  userId          String
+  provider        String    // 'facebook', 'linkedin', 'discord', 'twitter', 'github'
+  providerId      String    // The ID from the social platform
+  accessToken     String?   @db.Text
+  refreshToken    String?   @db.Text
+  tokenExpiry     DateTime?
+  username        String?   // Display name on that platform
+  profileUrl      String?   // Link to profile
+  avatarUrl       String?   // Profile picture from that platform
+  isActive        Boolean   @default(true)
+  lastSyncAt      DateTime?
+  syncError       String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider])  // One account per provider per user
+  @@unique([provider, providerId])  // Provider ID must be unique per platform
+  @@index([userId])
+  @@index([provider])
+}
+
+// Friendship between North Star users
+model Friendship {
+  id          String    @id @default(cuid())
+  requesterId String    // User who sent the request
+  addresseeId String    // User who received the request
+  status      String    @default("pending")  // 'pending', 'accepted', 'declined', 'blocked'
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  acceptedAt  DateTime?
+
+  requester   User      @relation("FriendshipRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  addressee   User      @relation("FriendshipAddressee", fields: [addresseeId], references: [id], onDelete: Cascade)
+
+  @@unique([requesterId, addresseeId])  // Prevent duplicate friend requests
+  @@index([requesterId])
+  @@index([addresseeId])
+  @@index([status])
+}
+
+// Chat messages between users
+model Message {
+  id          String    @id @default(cuid())
+  senderId    String
+  receiverId  String
+  content     String    @db.Text
+  isRead      Boolean   @default(false)
+  readAt      DateTime?
+  isInternal  Boolean   @default(true)  // true = North Star chat, false = external platform
+  platform    String?   // 'internal', 'facebook', 'discord', etc.
+  externalId  String?   // Message ID on external platform
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  sender      User      @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver    User      @relation("MessageReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([createdAt])
+  @@index([isRead])
+}
+
+// User online status / presence
+model UserStatus {
+  id            String    @id @default(cuid())
+  userId        String    @unique
+  isOnline      Boolean   @default(false)
+  lastSeenAt    DateTime  @default(now())
+  currentStatus String    @default("available")  // 'available', 'busy', 'away', 'dnd' (do not disturb)
+  statusMessage String?   // Custom status message
+  updatedAt     DateTime  @updatedAt
+
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
