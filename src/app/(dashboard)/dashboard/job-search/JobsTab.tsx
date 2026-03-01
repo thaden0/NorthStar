@@ -465,6 +465,21 @@ export default function JobsTab({ onUpdate }: JobsTabProps) {
                     </div>
                     <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                       <button
+                        className={styles.applyIconBtn}
+                        onClick={e => { e.stopPropagation(); startApplication(job.id); }}
+                        title={job.status === 'applied' ? 'Already applied' : 'Auto Apply'}
+                        disabled={applyStatus === 'running' || job.status === 'applied'}
+                        style={job.status === 'applied' ? { color: '#22c55e' } : {}}
+                      >
+                        {applyStatus === 'running' && applyJobId === job.id ? (
+                          <FiRefreshCw className={styles.spinning} />
+                        ) : job.status === 'applied' ? (
+                          <FiCheck />
+                        ) : (
+                          <FiPlay />
+                        )}
+                      </button>
+                      <button
                         className={`${styles.favoriteBtn} ${isGeneratingCover === job.id ? styles.coverGenerating : ''}`}
                         onClick={e => { e.stopPropagation(); viewCoverLetter(job.id); }}
                         title={jobsWithCoverLetters.has(job.id) || job.coverLetter ? 'View cover letter' : 'Generate cover letter'}
