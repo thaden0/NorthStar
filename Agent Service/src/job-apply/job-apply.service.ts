@@ -117,6 +117,100 @@ export class JobApplyService {
         success: true,
       });
 
+      // Detect job board and use specific strategy
+      const boardStrategy = this.detectJobBoard(request.job.sourceUrl);
+      if (boardStrategy) {
+        addStep({
+          action: 'analyzing',
+          description: `Detected ${boardStrategy.name} — using optimized strategy`,
+          success: true,
+        });
+
+        // Step 1: Click the apply button using board-specific selectors
+        let clickedApply = false;
+        for (const selector of boardStrategy.applySelectors) {
+          try {
+            const locator = page.locator(selector).first();
+            if (await locator.isVisible({ timeout: 2000 }).catch(() => false)) {
+              addStep({
+                action: 'clicking',
+                description: `Clicking apply button on ${boardStrategy.name}...`,
+                success: true,
+              });
+              await locator.click({ timeout: 5000 });
+              await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
+              await this.sleep(2000);
+              clickedApply = true;
+              break;
+            }
+          } catch { /* try next selector */ }
+        }
+
+        if (!clickedApply) {
+          // Try text-based as fallback
+          for (const text of boardStrategy.applyTexts) {
+            try {
+              const btn = page.getByRole('button', { name: text, exact: false }).first();
+              if (await btn.isVisible({ timeout: 1000 }).catch(() => false)) {
+                addStep({
+                  action: 'clicking',
+                  description: `Clicking "${text}" on ${boardStrategy.name}...`,
+                  success: true,
+                });
+                await btn.click({ timeout: 5000 });
+                await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
+                await this.sleep(2000);
+                clickedApply = true;
+                break;
+              }
+              // Also try links
+              const link = page.getByRole('link', { name: text, exact: false }).first();
+              if (await link.isVisible({ timeout: 1000 }).catch(() => false)) {
+                await link.click({ timeout: 5000 });
+                await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
+                await this.sleep(2000);
+                clickedApply = true;
+                break;
+              }
+            } catch { /* try next */ }
+          }
+        }
+
+        if (clickedApply) {
+          const screenshot = (await page.screenshot()).toString('base64');
+          lastScreenshot = screenshot;
+          addStep({
+            action: 'screenshot',
+            description: 'After clicking apply',
+            screenshot,
+            success: true,
+          });
+
+          // Check if we got redirected to an external site or login
+          const newUrl = page.url();
+          const bodyText = await page.evaluate(() => document.body.textContent?.toLowerCase() || '');
+
+          if (bodyText.includes('sign in') || bodyText.includes('log in') || bodyText.includes('create an account')) {
+            addStep({
+              action: 'needs_review',
+              description: `${boardStrategy.name} requires login to apply`,
+              screenshot,
+              success: false,
+              details: 'This job requires you to log in or create an account on the job board. Please apply manually.',
+            });
+            return { status: 'needs_review', steps, lastScreenshot };
+          }
+
+          this.logger.log(`[Apply ${request.job.id}] After apply click, now on: ${newUrl}`);
+        } else {
+          addStep({
+            action: 'error',
+            description: `Could not find apply button on ${boardStrategy.name}`,
+            success: false,
+          });
+        }
+      }
+
       // Main agent loop
       let applied = false;
       let needsReview = false;
@@ -156,8 +250,8 @@ export class JobApplyService {
           break;
         }
 
-        // If there are apply buttons and no form fields, click the apply button
-        if (analysis.applyButtons.length > 0 && analysis.formFields.length === 0) {
+        // ALWAYS click apply buttons first — they take priority over any form fields
+        if (analysis.applyButtons.length > 0) {
           const btn = analysis.applyButtons[0];
           addStep({
             action: 'clicking',
@@ -180,7 +274,7 @@ export class JobApplyService {
           continue;
         }
 
-        // If there are form fields, use LLM to decide what to fill
+        // If there are form fields (and NO apply button), use LLM to decide what to fill
         if (analysis.formFields.length > 0) {
           const actions = await this.decideFormActions(analysis, request);
 
@@ -487,9 +581,19 @@ export class JobApplyService {
           // Must be visible
           const rect = el.getBoundingClientRect();
           if (rect.width < 10 || rect.height < 10) return false;
-          // Exclude search bars and nav inputs
+          // Exclude search bars, nav inputs, and site-level search fields
           const cls = (typeof el.className === 'string' ? el.className : '').toLowerCase();
           if (cls.includes('search') || cls.includes('nav-') || cls.includes('gnav')) return false;
+          const name = ((el as HTMLInputElement).name || '').toLowerCase();
+          const id = (el.id || '').toLowerCase();
+          const placeholder = ((el as HTMLInputElement).placeholder || '').toLowerCase();
+          const ariaLabel = (el.getAttribute('aria-label') || '').toLowerCase();
+          // Filter out job search fields (Indeed, LinkedIn, etc)
+          const searchFieldIndicators = ['what', 'where', 'keyword', 'location', 'search', 'find job', 'job title'];
+          if (searchFieldIndicators.some(s => name.includes(s) || id.includes(s) || placeholder.includes(s) || ariaLabel.includes(s))) return false;
+          // Filter fields inside nav/header/search containers
+          const parent = el.closest('nav, header, [role="search"], [data-gnav], form[role="search"]');
+          if (parent) return false;
           return true;
         })
         .slice(0, 20)
@@ -639,6 +743,100 @@ Respond with ONLY the JSON array, no explanation. /no_think`;
     }
 
     return actions;
+  }
+
+  /**
+   * Detect which job board the URL belongs to and return board-specific selectors.
+   */
+  private detectJobBoard(url: string): {
+    name: string;
+    applySelectors: string[];
+    applyTexts: string[];
+  } | null {
+    const u = url.toLowerCase();
+
+    if (u.includes('indeed.com') || u.includes('indeed.ca')) {
+      return {
+        name: 'Indeed',
+        applySelectors: [
+          '#indeedApplyButton',
+          'button[id*="indeedApply"]',
+          '.jobsearch-IndeedApplyButton-newDesign',
+          'button[data-testid="indeedApplyButton"]',
+          'button.css-1234:has-text("Apply now")',
+          'a[href*="applystart"]',
+          '.indeed-apply-button',
+          'button[aria-label*="Apply"]',
+        ],
+        applyTexts: ['Apply now', 'Apply on company site', 'Apply', 'Easy Apply'],
+      };
+    }
+
+    if (u.includes('linkedin.com')) {
+      return {
+        name: 'LinkedIn',
+        applySelectors: [
+          '.jobs-apply-button',
+          'button.jobs-apply-button',
+          'button[data-control-name="jobdetails_topcard_inapply"]',
+          '.jobs-s-apply button',
+          'button.jobs-apply-button--top-card',
+        ],
+        applyTexts: ['Easy Apply', 'Apply', 'Apply now'],
+      };
+    }
+
+    if (u.includes('glassdoor.com') || u.includes('glassdoor.ca')) {
+      return {
+        name: 'Glassdoor',
+        applySelectors: [
+          'button[data-test="applyButton"]',
+          '.applyButton',
+          'button.gd-ui-button:has-text("Apply")',
+          'a[data-test="applyButton"]',
+        ],
+        applyTexts: ['Apply Now', 'Apply', 'Easy Apply', 'Apply on Company Site'],
+      };
+    }
+
+    if (u.includes('ziprecruiter.com')) {
+      return {
+        name: 'ZipRecruiter',
+        applySelectors: [
+          'button.apply_button',
+          '#apply_button',
+          'a.apply_button',
+          'button[data-testid="apply-button"]',
+        ],
+        applyTexts: ['Apply Now', 'Apply', '1-Click Apply'],
+      };
+    }
+
+    if (u.includes('monster.com')) {
+      return {
+        name: 'Monster',
+        applySelectors: [
+          '#applyButton',
+          'button[data-testid="applyButton"]',
+          'a.apply-button',
+        ],
+        applyTexts: ['Apply Now', 'Apply'],
+      };
+    }
+
+    if (u.includes('workday.com') || u.includes('myworkdayjobs.com')) {
+      return {
+        name: 'Workday',
+        applySelectors: [
+          'a[data-automation-id="jobPostingApplyButton"]',
+          'button[data-automation-id="jobPostingApplyButton"]',
+        ],
+        applyTexts: ['Apply', 'Apply Now'],
+      };
+    }
+
+    // Generic — no board-specific strategy
+    return null;
   }
 
   /**
