@@ -733,9 +733,12 @@ model Job {
   resumeId        String?   // FK to Resume used
   
   // AI Agent fields
-  aiScore         Float?    // AI match score (0-100)
-  aiNotes         String?   @db.Text  // AI analysis notes
-  autoApply       Boolean   @default(false)  // Whether AI should auto-apply
+  aiScore              Float?    // Legacy AI match score (0-100)
+  searchMatchScore     Float?    // How well job matches search criteria (0-100)
+  candidateMatchScore  Float?    // How well candidate matches job requirements (0-100)
+  aiNotes              String?   @db.Text  // AI analysis notes
+  aiScoredAt           DateTime? // When the AI last scored this job
+  autoApply            Boolean   @default(false)  // Whether AI should auto-apply
   
   // User notes
   notes           String?   @db.Text

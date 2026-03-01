@@ -28,7 +28,10 @@ interface Job {
   appliedAt: string | null;
   resumeId: string | null;
   aiScore: number | null;
+  searchMatchScore: number | null;
+  candidateMatchScore: number | null;
   aiNotes: string | null;
+  aiScoredAt: string | null;
   notes: string | null;
   isFavorite: boolean;
   createdAt: string;
@@ -56,7 +59,8 @@ const STATUS_OPTIONS = [
 const SORT_OPTIONS = [
   { value: 'createdAt', label: 'Date Found' },
   { value: 'postedAt', label: 'Date Posted' },
-  { value: 'aiScore', label: 'AI Score' },
+  { value: 'searchMatchScore', label: 'Search Match' },
+  { value: 'candidateMatchScore', label: 'Candidate Match' },
   { value: 'title', label: 'Title' },
   { value: 'company', label: 'Company' },
 ];
@@ -80,6 +84,7 @@ export default function JobsTab({ onUpdate }: JobsTabProps) {
   
   // Detail view
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const [isScoring, setIsScoring] = useState(false);
 
   const fetchJobs = useCallback(async () => {
     setIsLoading(true);
@@ -136,6 +141,26 @@ export default function JobsTab({ onUpdate }: JobsTabProps) {
     updateJob(job.id, { isFavorite: !job.isFavorite } as Partial<Job>);
   };
 
+  const triggerScoring = async () => {
+    setIsScoring(true);
+    try {
+      const res = await fetch('/api/job-search/jobs/score', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        console.log(`Scored ${data.scored} jobs`);
+        fetchJobs();
+      }
+    } catch (error) {
+      console.error('Failed to score jobs:', error);
+    } finally {
+      setIsScoring(false);
+    }
+  };
+
   const updateStatus = (job: Job, status: string) => {
     updateJob(job.id, { status } as Partial<Job>);
   };
@@ -171,6 +196,14 @@ export default function JobsTab({ onUpdate }: JobsTabProps) {
     return { label: source, color: '#6b7280' };
   };
 
+  const getScoreColor = (score: number) => {
+    if (score >= 80) return '#22c55e';
+    if (score >= 60) return '#84cc16';
+    if (score >= 40) return '#f59e0b';
+    if (score >= 20) return '#f97316';
+    return '#ef4444';
+  };
+
   return (
     <div className={styles.tabPanel}>
       <div className={styles.tabHeader}>
@@ -186,6 +219,18 @@ export default function JobsTab({ onUpdate }: JobsTabProps) {
         >
           <FiFilter />
           <span>Filters</span>
+        </button>
+        <button
+          className={styles.addButton}
+          onClick={triggerScoring}
+          disabled={isScoring}
+          title="Score unscored jobs with AI"
+        >
+          {isScoring ? (
+            <><div className={styles.spinner} style={{ width: 16, height: 16 }} /> <span>Scoring...</span></>
+          ) : (
+            <><span>🤖</span> <span>Score Jobs</span></>
+          )}
         </button>
       </div>
 
@@ -338,9 +383,14 @@ export default function JobsTab({ onUpdate }: JobsTabProps) {
                     {job.remote && (
                       <span className={styles.remoteBadge}>{job.remote}</span>
                     )}
-                    {job.aiScore !== null && (
-                      <span className={styles.aiScoreBadge}>
-                        AI: {Math.round(job.aiScore)}%
+                    {job.searchMatchScore !== null && (
+                      <span className={styles.aiScoreBadge} style={{ background: `${getScoreColor(job.searchMatchScore)}22`, color: getScoreColor(job.searchMatchScore), borderColor: getScoreColor(job.searchMatchScore) }}>
+                        Search: {Math.round(job.searchMatchScore)}%
+                      </span>
+                    )}
+                    {job.candidateMatchScore !== null && (
+                      <span className={styles.aiScoreBadge} style={{ background: `${getScoreColor(job.candidateMatchScore)}22`, color: getScoreColor(job.candidateMatchScore), borderColor: getScoreColor(job.candidateMatchScore) }}>
+                        Fit: {Math.round(job.candidateMatchScore)}%
                       </span>
                     )}
                   </div>
@@ -415,16 +465,37 @@ export default function JobsTab({ onUpdate }: JobsTabProps) {
                   )}
                 </div>
 
-                {/* AI Score */}
-                {selectedJob.aiScore !== null && (
+                {/* AI Scores */}
+                {(selectedJob.searchMatchScore !== null || selectedJob.candidateMatchScore !== null) && (
                   <div className={styles.aiScoreSection}>
-                    <div className={styles.aiScoreBar}>
-                      <div
-                        className={styles.aiScoreFill}
-                        style={{ width: `${selectedJob.aiScore}%` }}
-                      />
-                    </div>
-                    <span className={styles.aiScoreText}>AI Match: {Math.round(selectedJob.aiScore)}%</span>
+                    {selectedJob.searchMatchScore !== null && (
+                      <div style={{ marginBottom: '0.5rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                          <span className={styles.aiScoreText}>Search Match</span>
+                          <span style={{ color: getScoreColor(selectedJob.searchMatchScore), fontWeight: 600 }}>{Math.round(selectedJob.searchMatchScore)}%</span>
+                        </div>
+                        <div className={styles.aiScoreBar}>
+                          <div
+                            className={styles.aiScoreFill}
+                            style={{ width: `${selectedJob.searchMatchScore}%`, background: getScoreColor(selectedJob.searchMatchScore) }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                    {selectedJob.candidateMatchScore !== null && (
+                      <div style={{ marginBottom: '0.5rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                          <span className={styles.aiScoreText}>Candidate Fit</span>
+                          <span style={{ color: getScoreColor(selectedJob.candidateMatchScore), fontWeight: 600 }}>{Math.round(selectedJob.candidateMatchScore)}%</span>
+                        </div>
+                        <div className={styles.aiScoreBar}>
+                          <div
+                            className={styles.aiScoreFill}
+                            style={{ width: `${selectedJob.candidateMatchScore}%`, background: getScoreColor(selectedJob.candidateMatchScore) }}
+                          />
+                        </div>
+                      </div>
+                    )}
                     {selectedJob.aiNotes && (
                       <p className={styles.aiNotesText}>{selectedJob.aiNotes}</p>
                     )}

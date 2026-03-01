@@ -11,6 +11,7 @@ import { LlmModule } from './llm/llm.module';
 import { CronModule } from './cron/cron.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { MemoryModule } from './memory/memory.module';
+import { JobScoringModule } from './job-scoring/job-scoring.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -30,6 +31,7 @@ import { HealthController } from './health.controller';
     CronModule,
     NotificationsModule,
     MemoryModule,
+    JobScoringModule,
   ],
   controllers: [HealthController],
 })

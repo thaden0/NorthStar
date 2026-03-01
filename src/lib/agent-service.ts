@@ -461,6 +461,58 @@ export class AgentServiceClient {
   }>> {
     return this.fetch(`/cron-jobs/${jobId}/executions?limit=${limit}`);
   }
+
+  // ==================== JOB SCORING ====================
+
+  /**
+   * Score jobs using AI against search criteria and resume
+   */
+  async scoreJobs(payload: {
+    jobs: Array<{
+      id: string;
+      title: string;
+      company: string;
+      location: string | null;
+      description: string | null;
+      salaryMin: number | null;
+      salaryMax: number | null;
+      salaryPeriod: string | null;
+      jobType: string | null;
+      remote: string | null;
+      experienceLevel: string | null;
+    }>;
+    searchCriteria: {
+      keywords: string[];
+      locations: string[];
+      jobTypes: string[];
+      remote: string;
+      salaryMin: number | null;
+      salaryMax: number | null;
+      experienceLevel: string | null;
+      excludeKeywords: string[];
+    };
+    resume: {
+      name: string;
+      content: string | null;
+      skills: string[];
+      experience: string;
+    } | null;
+    model?: string;
+  }): Promise<{
+    results: Array<{
+      jobId: string;
+      searchMatchScore: number;
+      candidateMatchScore: number;
+      notes: string;
+    }>;
+    model: string;
+    scoredAt: string;
+  }> {
+    return this.fetch('/job-scoring/score', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
 }
 
 /**
