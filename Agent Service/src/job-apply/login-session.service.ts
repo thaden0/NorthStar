@@ -10,6 +10,7 @@ export interface LoginSession {
   status: 'connecting' | 'ready' | 'logged_in' | 'closed';
   context: BrowserContext | null;
   page: Page | null;
+  popupPage: Page | null; // Google OAuth popup, etc.
   lastScreenshot: string | null;
   createdAt: Date;
 }
@@ -114,6 +115,7 @@ export class LoginSessionService {
       status: 'connecting',
       context: null,
       page: null,
+      popupPage: null,
       lastScreenshot: null,
       createdAt: new Date(),
     };
@@ -141,6 +143,18 @@ export class LoginSessionService {
       session.page = page;
       session.status = 'ready';
 
+      // Listen for popups (Google OAuth, etc.)
+      context.on('page', (newPage: Page) => {
+        this.logger.log(`Popup detected: ${newPage.url()}`);
+        session.popupPage = newPage;
+
+        // When popup closes, clear it
+        newPage.on('close', () => {
+          this.logger.log('Popup closed, switching back to main page');
+          session.popupPage = null;
+        });
+      });
+
       // Navigate to login page
       await page.goto(config.loginUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
       await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
@@ -165,21 +179,41 @@ export class LoginSessionService {
   }
 
   /**
+   * Get the currently active page (popup if open, otherwise main).
+   */
+  private getActivePage(session: LoginSession): Page | null {
+    if (session.popupPage && !session.popupPage.isClosed()) {
+      return session.popupPage;
+    }
+    return session.page;
+  }
+
+  /**
    * Get a screenshot of the current page.
    */
-  async getScreenshot(sessionId: string): Promise<{ screenshot: string; url: string; status: string }> {
+  async getScreenshot(sessionId: string): Promise<{ screenshot: string; url: string; status: string; isPopup: boolean }> {
     const session = this.activeSessions.get(sessionId);
     if (!session?.page) {
       throw new Error('No active session');
     }
 
     try {
-      const screenshot = await session.page.screenshot({ type: 'jpeg', quality: 70 });
+      const activePage = this.getActivePage(session);
+      if (!activePage || activePage.isClosed()) {
+        return {
+          screenshot: session.lastScreenshot || '',
+          url: '',
+          status: session.status,
+          isPopup: false,
+        };
+      }
+
+      const screenshot = await activePage.screenshot({ type: 'jpeg', quality: 70 });
       session.lastScreenshot = screenshot.toString('base64');
 
-      // Check login status
+      // Check login status on main page (not popup)
       const config = BOARD_CONFIGS[session.board];
-      if (config && session.status !== 'logged_in') {
+      if (config && session.status !== 'logged_in' && !session.popupPage) {
         const isLoggedIn = await this.checkLoggedIn(session.page, config);
         if (isLoggedIn) {
           session.status = 'logged_in';
@@ -189,14 +223,16 @@ export class LoginSessionService {
 
       return {
         screenshot: session.lastScreenshot,
-        url: session.page.url(),
+        url: activePage.url(),
         status: session.status,
+        isPopup: !!session.popupPage && !session.popupPage.isClosed(),
       };
-    } catch (error) {
+    } catch {
       return {
         screenshot: session.lastScreenshot || '',
         url: '',
         status: session.status,
+        isPopup: false,
       };
     }
   }
@@ -208,7 +244,10 @@ export class LoginSessionService {
     const session = this.activeSessions.get(sessionId);
     if (!session?.page) throw new Error('No active session');
 
-    await session.page.mouse.click(x, y);
+    const activePage = this.getActivePage(session);
+    if (!activePage || activePage.isClosed()) throw new Error('No active page');
+
+    await activePage.mouse.click(x, y);
     await this.sleep(500);
   }
 
@@ -219,7 +258,10 @@ export class LoginSessionService {
     const session = this.activeSessions.get(sessionId);
     if (!session?.page) throw new Error('No active session');
 
-    await session.page.keyboard.type(text, { delay: 50 });
+    const activePage = this.getActivePage(session);
+    if (!activePage || activePage.isClosed()) throw new Error('No active page');
+
+    await activePage.keyboard.type(text, { delay: 50 });
   }
 
   /**
@@ -229,7 +271,10 @@ export class LoginSessionService {
     const session = this.activeSessions.get(sessionId);
     if (!session?.page) throw new Error('No active session');
 
-    await session.page.keyboard.press(key);
+    const activePage = this.getActivePage(session);
+    if (!activePage || activePage.isClosed()) throw new Error('No active page');
+
+    await activePage.keyboard.press(key);
     await this.sleep(300);
   }
 
@@ -240,8 +285,11 @@ export class LoginSessionService {
     const session = this.activeSessions.get(sessionId);
     if (!session?.page) throw new Error('No active session');
 
-    await session.page.keyboard.press('Control+a');
-    await session.page.keyboard.press('Backspace');
+    const activePage = this.getActivePage(session);
+    if (!activePage || activePage.isClosed()) throw new Error('No active page');
+
+    await activePage.keyboard.press('Control+a');
+    await activePage.keyboard.press('Backspace');
   }
 
   /**

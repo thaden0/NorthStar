@@ -25,6 +25,7 @@ export default function SettingsTab() {
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [checking, setChecking] = useState<string | null>(null);
   const [typeText, setTypeText] = useState('');
+  const [isPopup, setIsPopup] = useState(false);
   const screenshotRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -91,6 +92,7 @@ export default function SettingsTab() {
         });
         const data = await res.json();
         if (data.screenshot) setScreenshot(data.screenshot);
+        if (data.isPopup !== undefined) setIsPopup(data.isPopup);
         if (data.status === 'logged_in' && loginStatus !== 'logged_in') {
           setLoginStatus('logged_in');
           setMessage({ type: 'success', text: 'Login successful! Your session is saved.' });
@@ -301,7 +303,7 @@ export default function SettingsTab() {
                     styles.statusYellow
                   }`}>
                     {loginStatus === 'connecting' && '⟳ Launching browser...'}
-                    {loginStatus === 'ready' && '● Click on the page to interact'}
+                    {loginStatus === 'ready' && (isPopup ? '🔐 Popup window — complete sign-in here' : '● Click on the page to interact')}
                     {loginStatus === 'logged_in' && '✓ Logged in — session saved!'}
                   </p>
                 </div>
