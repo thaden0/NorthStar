@@ -10,7 +10,7 @@ services:
       - JWT_SECRET=${JWT_SECRET:-northstar-agent-service-secret-key-2026}
       - JWT_ISSUER=${JWT_ISSUER:-north-star}
       - JWT_AUDIENCE=${JWT_AUDIENCE:-agent-service}
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://172.17.0.1:11434}
       - OLLAMA_DEFAULT_MODEL=${OLLAMA_DEFAULT_MODEL:-llama3.2:latest}
       - GOOGLE_SERVICE_URL=${GOOGLE_SERVICE_URL:-http://192.168.1.123:3003}
       - NORTH_STAR_URL=${NORTH_STAR_URL:-http://192.168.1.123:3000}

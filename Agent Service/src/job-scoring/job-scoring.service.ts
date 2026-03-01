@@ -9,7 +9,7 @@ export class JobScoringService {
   constructor(private readonly ollamaService: OllamaService) {}
 
   async scoreJobs(dto: JobScoringRequestDto): Promise<JobScoreResult[]> {
-    const model = dto.model || 'phi4:latest';
+    const model = dto.model || 'qwen3:latest';
     const results: JobScoreResult[] = [];
 
     // Build context about the search and candidate

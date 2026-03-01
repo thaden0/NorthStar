@@ -69,7 +69,7 @@ export class JobScoringController {
       success: true,
       data: {
         results,
-        model: dto.model || 'phi4:latest',
+        model: dto.model || 'qwen3:latest',
         scoredAt: new Date().toISOString(),
       },
     };
