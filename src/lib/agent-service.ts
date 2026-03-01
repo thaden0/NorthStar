@@ -78,6 +78,55 @@ export interface ModelStats {
   lastUsed: string | null;
 }
 
+export interface AgentCronJob {
+  id: string;
+  userId: string;
+  name: string;
+  description: string | null;
+  prompt: string;
+  scheduleType: string;
+  cronExpression: string | null;
+  scheduledAt: string | null;
+  recurringPattern: string | null;
+  recurringDay: number | null;
+  recurringTime: string | null;
+  timezone: string;
+  enabled: boolean;
+  lastRunAt: string | null;
+  nextRunAt: string | null;
+  runCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateAgentCronJobInput {
+  name: string;
+  description?: string;
+  prompt: string;
+  scheduleType: 'cron' | 'once' | 'recurring';
+  cronExpression?: string;
+  scheduledAt?: string;
+  recurringPattern?: string;
+  recurringDay?: number;
+  recurringTime?: string;
+  timezone?: string;
+  enabled?: boolean;
+}
+
+export interface UpdateAgentCronJobInput {
+  name?: string;
+  description?: string;
+  prompt?: string;
+  scheduleType?: 'cron' | 'once' | 'recurring';
+  cronExpression?: string;
+  scheduledAt?: string;
+  recurringPattern?: string;
+  recurringDay?: number;
+  recurringTime?: string;
+  timezone?: string;
+  enabled?: boolean;
+}
+
 /**
  * Generate JWT token for Agent Service authentication
  */
@@ -333,6 +382,84 @@ export class AgentServiceClient {
    */
   async healthCheck(): Promise<{ status: string; service: string; timestamp: string }> {
     return this.fetch('/health');
+  }
+
+  // ==================== CRON JOBS ====================
+
+  /**
+   * Get all cron jobs for the user
+   */
+  async getCronJobs(): Promise<AgentCronJob[]> {
+    return this.fetch<AgentCronJob[]>(`/cron-jobs?userId=${encodeURIComponent(this.userId)}`);
+  }
+
+  /**
+   * Get a specific cron job
+   */
+  async getCronJob(jobId: string): Promise<AgentCronJob> {
+    return this.fetch<AgentCronJob>(`/cron-jobs/${jobId}`);
+  }
+
+  /**
+   * Create a new cron job
+   */
+  async createCronJob(input: CreateAgentCronJobInput): Promise<AgentCronJob> {
+    return this.fetch<AgentCronJob>('/cron-jobs', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  /**
+   * Update a cron job
+   */
+  async updateCronJob(jobId: string, input: UpdateAgentCronJobInput): Promise<AgentCronJob> {
+    return this.fetch<AgentCronJob>(`/cron-jobs/${jobId}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    });
+  }
+
+  /**
+   * Delete a cron job
+   */
+  async deleteCronJob(jobId: string): Promise<void> {
+    await this.fetch(`/cron-jobs/${jobId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  /**
+   * Toggle a cron job's enabled status
+   */
+  async toggleCronJob(jobId: string, enabled: boolean): Promise<AgentCronJob> {
+    return this.updateCronJob(jobId, { enabled });
+  }
+
+  /**
+   * Manually trigger a cron job
+   */
+  async triggerCronJob(jobId: string): Promise<{ executionId: string }> {
+    return this.fetch<{ executionId: string }>(`/cron-jobs/${jobId}/run`, {
+      method: 'POST',
+    });
+  }
+
+  /**
+   * Get execution history for a cron job
+   */
+  async getCronJobExecutions(jobId: string, limit = 20): Promise<Array<{
+    id: string;
+    jobId: string;
+    userId: string;
+    startedAt: string;
+    completedAt: string | null;
+    status: string;
+    result: string | null;
+    error: string | null;
+    executionTimeMs: number | null;
+  }>> {
+    return this.fetch(`/cron-jobs/${jobId}/executions?limit=${limit}`);
   }
 }
 

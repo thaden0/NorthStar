@@ -42,6 +42,10 @@ model User {
   messagesSent      Message[]  @relation("MessageSender")
   messagesReceived  Message[]  @relation("MessageReceiver")
   userStatus        UserStatus?
+  
+  // Job Search relations
+  jobSearches       JobSearch[]
+  resumes           Resume[]
 
   @@index([email])
 }
@@ -635,4 +639,119 @@ model UserStatus {
   updatedAt     DateTime  @updatedAt
 
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ==================== JOB SEARCH ====================
+
+// Job Search criteria - each represents a distinct search configuration
+model JobSearch {
+  id              String    @id @default(cuid())
+  userId          String
+  name            String    // Friendly name for this search (e.g., "Senior React Remote")
+  keywords        String[]  // Search keywords (e.g., ["React", "TypeScript", "Senior"])
+  location        String?   // Location filter (e.g., "Toronto, ON" or "Remote")
+  remote          String    @default("any")  // 'any', 'remote', 'hybrid', 'onsite'
+  salaryMin       Int?      // Minimum salary
+  salaryMax       Int?      // Maximum salary
+  salaryPeriod    String    @default("yearly")  // 'yearly', 'monthly', 'hourly'
+  experienceLevel String?   // 'entry', 'mid', 'senior', 'lead', 'executive'
+  jobType         String    @default("fulltime") // 'fulltime', 'parttime', 'contract', 'internship'
+  industry        String?   // Industry filter
+  companySize     String?   // 'startup', 'small', 'medium', 'large', 'enterprise'
+  excludeKeywords String[]  // Keywords to exclude from results
+  sources         String[]  @default(["indeed", "linkedin"]) // Which sources to scrape
+  isActive        Boolean   @default(true)
+  lastScrapedAt   DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobs            Job[]
+
+  @@index([userId])
+  @@index([isActive])
+}
+
+// Resume uploads with metadata for AI matching
+model Resume {
+  id              String    @id @default(cuid())
+  userId          String
+  name            String    // Display name (e.g., "Full-Stack Resume 2026")
+  fileName        String    // Original file name
+  fileUrl         String    // URL/path to stored file
+  fileSize        Int       // File size in bytes
+  fileType        String    // MIME type (application/pdf, etc.)
+  
+  // Metadata for AI matching
+  targetRole      String?   // Target role this resume is optimized for
+  targetIndustry  String?   // Industry this resume targets
+  skills          String[]  // Key skills highlighted in this resume
+  experienceYears Int?      // Years of experience reflected
+  summary         String?   @db.Text  // Brief summary of the resume
+  
+  isDefault       Boolean   @default(false) // Default resume to use when none matches
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobApplications Job[]     @relation("JobResume")
+
+  @@index([userId])
+}
+
+// Individual job listings found by scraping
+model Job {
+  id              String    @id @default(cuid())
+  jobSearchId     String
+  userId          String
+  
+  // Core job info
+  title           String
+  company         String
+  location        String?
+  description     String?   @db.Text
+  salaryMin       Int?
+  salaryMax       Int?
+  salaryPeriod    String?   // 'yearly', 'monthly', 'hourly'
+  jobType         String?   // 'fulltime', 'parttime', 'contract', 'internship'
+  remote          String?   // 'remote', 'hybrid', 'onsite'
+  experienceLevel String?
+  postedAt        DateTime?
+  expiresAt       DateTime?
+  
+  // Source info
+  source          String    // 'indeed', 'linkedin'
+  sourceUrl       String    // Original listing URL
+  sourceId        String?   // Platform-specific ID
+  
+  // Application tracking
+  status          String    @default("new") // 'new', 'reviewed', 'saved', 'applied', 'interviewing', 'offered', 'rejected', 'withdrawn', 'hidden'
+  appliedAt       DateTime?
+  appliedWith     String?   // Resume ID used for application
+  resumeId        String?   // FK to Resume used
+  
+  // AI Agent fields
+  aiScore         Float?    // AI match score (0-100)
+  aiNotes         String?   @db.Text  // AI analysis notes
+  autoApply       Boolean   @default(false)  // Whether AI should auto-apply
+  
+  // User notes
+  notes           String?   @db.Text
+  isFavorite      Boolean   @default(false)
+  
+  scrapedAt       DateTime  @default(now())
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  jobSearch       JobSearch @relation(fields: [jobSearchId], references: [id], onDelete: Cascade)
+  resume          Resume?   @relation("JobResume", fields: [resumeId], references: [id], onDelete: SetNull)
+
+  @@unique([sourceUrl, userId])  // Don't store same job twice for same user
+  @@index([jobSearchId])
+  @@index([userId])
+  @@index([status])
+  @@index([aiScore])
+  @@index([createdAt])
+  @@index([source])
 }

@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   FiPlus, FiEdit2, FiTrash2, FiPlay, FiClock, 
   FiCalendar, FiRepeat, FiToggleLeft, FiToggleRight,
-  FiX, FiCheck, FiChevronDown
+  FiX, FiCheck, FiChevronDown, FiCpu
 } from 'react-icons/fi';
 import { formatDistanceToNow, format } from 'date-fns';
 import { 
@@ -38,6 +38,7 @@ interface ScheduledTask {
   nextRunAt: Date | null;
   runCount: number;
   createdAt: Date;
+  source: 'local' | 'agent';
 }
 
 interface ScheduledTasksListProps {
@@ -130,11 +131,11 @@ export default function ScheduledTasksList({ initialTasks }: ScheduledTasksListP
     startTransition(async () => {
       try {
         if (editingTask) {
-          const updated = await updateScheduledTask(editingTask.id, formData);
-          setTasks(prev => prev.map(t => t.id === editingTask.id ? updated : t));
+          const updated = await updateScheduledTask(editingTask.id, formData, editingTask.source);
+          setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...updated, source: editingTask.source } as ScheduledTask : t));
         } else {
           const created = await createScheduledTask(formData);
-          setTasks(prev => [created, ...prev]);
+          setTasks(prev => [{ ...created, source: 'local' as const }, ...prev]);
         }
         closeModal();
       } catch (error) {
@@ -144,12 +145,12 @@ export default function ScheduledTasksList({ initialTasks }: ScheduledTasksListP
     });
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: string, source: 'local' | 'agent') => {
     if (!confirm('Are you sure you want to delete this scheduled task?')) return;
     
     startTransition(async () => {
       try {
-        await deleteScheduledTask(id);
+        await deleteScheduledTask(id, source);
         setTasks(prev => prev.filter(t => t.id !== id));
       } catch (error) {
         console.error('Error deleting task:', error);
@@ -158,11 +159,11 @@ export default function ScheduledTasksList({ initialTasks }: ScheduledTasksListP
     });
   };
 
-  const handleToggle = async (id: string, enabled: boolean) => {
+  const handleToggle = async (id: string, enabled: boolean, source: 'local' | 'agent') => {
     startTransition(async () => {
       try {
-        const updated = await toggleScheduledTask(id, !enabled);
-        setTasks(prev => prev.map(t => t.id === id ? updated : t));
+        const updated = await toggleScheduledTask(id, !enabled, source);
+        setTasks(prev => prev.map(t => t.id === id ? { ...updated, source } as ScheduledTask : t));
       } catch (error) {
         console.error('Error toggling task:', error);
         alert('Failed to toggle task');
@@ -170,10 +171,10 @@ export default function ScheduledTasksList({ initialTasks }: ScheduledTasksListP
     });
   };
 
-  const handleTrigger = async (id: string) => {
+  const handleTrigger = async (id: string, source: 'local' | 'agent') => {
     startTransition(async () => {
       try {
-        await triggerScheduledTask(id);
+        await triggerScheduledTask(id, source);
         alert('Task triggered! Check notifications for results.');
       } catch (error) {
         console.error('Error triggering task:', error);
@@ -240,13 +241,20 @@ export default function ScheduledTasksList({ initialTasks }: ScheduledTasksListP
             >
               <div className={styles.taskHeader}>
                 <div className={styles.taskInfo}>
-                  <h3>{task.name}</h3>
+                  <h3>
+                    {task.name}
+                    {task.source === 'agent' && (
+                      <span className={styles.aiBadge} title="Created by AI">
+                        <FiCpu /> AI
+                      </span>
+                    )}
+                  </h3>
                   {task.description && <p className={styles.taskDesc}>{task.description}</p>}
                 </div>
                 <div className={styles.taskActions}>
                   <button
                     className={styles.toggleBtn}
-                    onClick={() => handleToggle(task.id, task.enabled)}
+                    onClick={() => handleToggle(task.id, task.enabled, task.source)}
                     disabled={isPending}
                     title={task.enabled ? 'Disable' : 'Enable'}
                   >
@@ -254,7 +262,7 @@ export default function ScheduledTasksList({ initialTasks }: ScheduledTasksListP
                   </button>
                   <button
                     className={styles.actionBtn}
-                    onClick={() => handleTrigger(task.id)}
+                    onClick={() => handleTrigger(task.id, task.source)}
                     disabled={isPending}
                     title="Run Now"
                   >
@@ -270,7 +278,7 @@ export default function ScheduledTasksList({ initialTasks }: ScheduledTasksListP
                   </button>
                   <button
                     className={`${styles.actionBtn} ${styles.deleteBtn}`}
-                    onClick={() => handleDelete(task.id)}
+                    onClick={() => handleDelete(task.id, task.source)}
                     disabled={isPending}
                     title="Delete"
                   >

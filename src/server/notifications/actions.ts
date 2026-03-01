@@ -93,16 +93,101 @@ export interface CreateScheduledTaskInput {
   enabled?: boolean;
 }
 
-export async function getScheduledTasks() {
+export interface ScheduledTaskWithSource {
+  id: string;
+  name: string;
+  description: string | null;
+  prompt: string;
+  scheduleType: string;
+  cronExpression: string | null;
+  scheduledAt: Date | null;
+  recurringPattern: string | null;
+  recurringDay: number | null;
+  recurringTime: string | null;
+  timezone: string;
+  enabled: boolean;
+  lastRunAt: Date | null;
+  nextRunAt: Date | null;
+  runCount: number;
+  createdAt: Date;
+  source: 'local' | 'agent';
+}
+
+export async function getScheduledTasks(): Promise<ScheduledTaskWithSource[]> {
   const session = await getSession();
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }
 
-  return prisma.scheduledTask.findMany({
+  // Fetch from local database
+  const localTasks = await prisma.scheduledTask.findMany({
     where: { userId: session.user.id },
     orderBy: { createdAt: 'desc' },
   });
+
+  // Convert local tasks to common format
+  const localTasksWithSource: ScheduledTaskWithSource[] = localTasks.map(task => ({
+    id: task.id,
+    name: task.name,
+    description: task.description,
+    prompt: task.prompt,
+    scheduleType: task.scheduleType,
+    cronExpression: task.cronExpression,
+    scheduledAt: task.scheduledAt,
+    recurringPattern: task.recurringPattern,
+    recurringDay: task.recurringDay,
+    recurringTime: task.recurringTime,
+    timezone: task.timezone,
+    enabled: task.enabled,
+    lastRunAt: task.lastRunAt,
+    nextRunAt: task.nextRunAt,
+    runCount: task.runCount,
+    createdAt: task.createdAt,
+    source: 'local' as const,
+  }));
+
+  // Fetch from Agent Service
+  let agentTasks: ScheduledTaskWithSource[] = [];
+  try {
+    const { createAgentClient } = await import('@/lib/agent-service');
+    const client = createAgentClient(session.user.id, session.user.email || undefined, session.user.name || undefined);
+    const agentJobs = await client.getCronJobs();
+    
+    // Get local task IDs to filter out duplicates (tasks that were synced from local to agent)
+    const localTaskIds = new Set(localTasks.map(t => t.id));
+    
+    // Convert agent jobs to common format, excluding duplicates
+    agentTasks = agentJobs
+      .filter(job => !localTaskIds.has(job.id))
+      .map(job => ({
+        id: job.id,
+        name: job.name,
+        description: job.description,
+        prompt: job.prompt,
+        scheduleType: job.scheduleType,
+        cronExpression: job.cronExpression,
+        scheduledAt: job.scheduledAt ? new Date(job.scheduledAt) : null,
+        recurringPattern: job.recurringPattern,
+        recurringDay: job.recurringDay,
+        recurringTime: job.recurringTime,
+        timezone: job.timezone || 'UTC',
+        enabled: job.enabled,
+        lastRunAt: job.lastRunAt ? new Date(job.lastRunAt) : null,
+        nextRunAt: job.nextRunAt ? new Date(job.nextRunAt) : null,
+        runCount: job.runCount || 0,
+        createdAt: new Date(job.createdAt),
+        source: 'agent' as const,
+      }));
+  } catch (error) {
+    console.error('Error fetching tasks from Agent Service:', error);
+    // Continue with just local tasks if agent service is unavailable
+  }
+
+  // Merge and sort by creation date
+  const allTasks = [...localTasksWithSource, ...agentTasks];
+  allTasks.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+  return allTasks;
 }
 
 export async function getScheduledTask(id: string) {
@@ -155,12 +240,58 @@ export async function createScheduledTask(input: CreateScheduledTaskInput) {
   return task;
 }
 
-export async function updateScheduledTask(id: string, input: Partial<CreateScheduledTaskInput>) {
+export async function updateScheduledTask(id: string, input: Partial<CreateScheduledTaskInput>, source: 'local' | 'agent' = 'local') {
   const session = await getSession();
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }
 
+  // Handle agent-sourced tasks
+  if (source === 'agent') {
+    try {
+      const { createAgentClient } = await import('@/lib/agent-service');
+      const client = createAgentClient(session.user.id, session.user.email || undefined, session.user.name || undefined);
+      const updated = await client.updateCronJob(id, {
+        name: input.name,
+        description: input.description,
+        prompt: input.prompt,
+        scheduleType: input.scheduleType,
+        cronExpression: input.cronExpression,
+        scheduledAt: input.scheduledAt,
+        recurringPattern: input.recurringPattern,
+        recurringDay: input.recurringDay,
+        recurringTime: input.recurringTime,
+        timezone: input.timezone,
+        enabled: input.enabled,
+      });
+      
+      revalidatePath('/dashboard/settings/scheduled-tasks');
+      return {
+        id: updated.id,
+        name: updated.name,
+        description: updated.description,
+        prompt: updated.prompt,
+        scheduleType: updated.scheduleType,
+        cronExpression: updated.cronExpression,
+        scheduledAt: updated.scheduledAt ? new Date(updated.scheduledAt) : null,
+        recurringPattern: updated.recurringPattern,
+        recurringDay: updated.recurringDay,
+        recurringTime: updated.recurringTime,
+        timezone: updated.timezone || 'UTC',
+        enabled: updated.enabled,
+        lastRunAt: updated.lastRunAt ? new Date(updated.lastRunAt) : null,
+        nextRunAt: updated.nextRunAt ? new Date(updated.nextRunAt) : null,
+        runCount: updated.runCount || 0,
+        createdAt: new Date(updated.createdAt),
+        source: 'agent' as const,
+      };
+    } catch (error) {
+      console.error('Error updating agent task:', error);
+      throw new Error('Failed to update task');
+    }
+  }
+
+  // Handle local tasks
   const existing = await prisma.scheduledTask.findUnique({ where: { id } });
   if (!existing || existing.userId !== session.user.id) {
     throw new Error('Task not found');
@@ -195,15 +326,30 @@ export async function updateScheduledTask(id: string, input: Partial<CreateSched
   await syncTaskToAgentService(task, 'update');
 
   revalidatePath('/dashboard/settings/scheduled-tasks');
-  return task;
+  return { ...task, source: 'local' as const };
 }
 
-export async function deleteScheduledTask(id: string) {
+export async function deleteScheduledTask(id: string, source: 'local' | 'agent' = 'local') {
   const session = await getSession();
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }
 
+  // Handle agent-sourced tasks
+  if (source === 'agent') {
+    try {
+      const { createAgentClient } = await import('@/lib/agent-service');
+      const client = createAgentClient(session.user.id, session.user.email || undefined, session.user.name || undefined);
+      await client.deleteCronJob(id);
+      revalidatePath('/dashboard/settings/scheduled-tasks');
+      return;
+    } catch (error) {
+      console.error('Error deleting agent task:', error);
+      throw new Error('Failed to delete task');
+    }
+  }
+
+  // Handle local tasks
   const task = await prisma.scheduledTask.findUnique({ where: { id } });
   if (!task || task.userId !== session.user.id) {
     throw new Error('Task not found');
@@ -217,12 +363,46 @@ export async function deleteScheduledTask(id: string) {
   revalidatePath('/dashboard/settings/scheduled-tasks');
 }
 
-export async function toggleScheduledTask(id: string, enabled: boolean) {
+export async function toggleScheduledTask(id: string, enabled: boolean, source: 'local' | 'agent' = 'local') {
   const session = await getSession();
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }
 
+  // Handle agent-sourced tasks
+  if (source === 'agent') {
+    try {
+      const { createAgentClient } = await import('@/lib/agent-service');
+      const client = createAgentClient(session.user.id, session.user.email || undefined, session.user.name || undefined);
+      const updated = await client.toggleCronJob(id, enabled);
+      
+      revalidatePath('/dashboard/settings/scheduled-tasks');
+      return {
+        id: updated.id,
+        name: updated.name,
+        description: updated.description,
+        prompt: updated.prompt,
+        scheduleType: updated.scheduleType,
+        cronExpression: updated.cronExpression,
+        scheduledAt: updated.scheduledAt ? new Date(updated.scheduledAt) : null,
+        recurringPattern: updated.recurringPattern,
+        recurringDay: updated.recurringDay,
+        recurringTime: updated.recurringTime,
+        timezone: updated.timezone || 'UTC',
+        enabled: updated.enabled,
+        lastRunAt: updated.lastRunAt ? new Date(updated.lastRunAt) : null,
+        nextRunAt: updated.nextRunAt ? new Date(updated.nextRunAt) : null,
+        runCount: updated.runCount || 0,
+        createdAt: new Date(updated.createdAt),
+        source: 'agent' as const,
+      };
+    } catch (error) {
+      console.error('Error toggling agent task:', error);
+      throw new Error('Failed to toggle task');
+    }
+  }
+
+  // Handle local tasks
   const task = await prisma.scheduledTask.update({
     where: { id, userId: session.user.id },
     data: { enabled },
@@ -232,35 +412,39 @@ export async function toggleScheduledTask(id: string, enabled: boolean) {
   await syncTaskToAgentService(task, 'update');
 
   revalidatePath('/dashboard/settings/scheduled-tasks');
-  return task;
+  return { ...task, source: 'local' as const };
 }
 
-export async function triggerScheduledTask(id: string) {
+export async function triggerScheduledTask(id: string, source: 'local' | 'agent' = 'local') {
   const session = await getSession();
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }
 
+  // For agent-sourced tasks, use the Agent Service client
+  if (source === 'agent') {
+    try {
+      const { createAgentClient } = await import('@/lib/agent-service');
+      const client = createAgentClient(session.user.id, session.user.email || undefined, session.user.name || undefined);
+      await client.triggerCronJob(id);
+      return { success: true };
+    } catch (error) {
+      console.error('Error triggering agent task:', error);
+      throw new Error('Failed to trigger task');
+    }
+  }
+
+  // Handle local tasks - still call Agent Service but via direct fetch
   const task = await prisma.scheduledTask.findUnique({ where: { id } });
   if (!task || task.userId !== session.user.id) {
     throw new Error('Task not found');
   }
 
   // Call Agent Service to trigger the job
-  const agentServiceUrl = process.env.AGENT_SERVICE_URL || 'http://localhost:3002';
-  
   try {
-    const response = await fetch(`${agentServiceUrl}/cron-jobs/${id}/run`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to trigger task');
-    }
-
+    const { createAgentClient } = await import('@/lib/agent-service');
+    const client = createAgentClient(session.user.id, session.user.email || undefined, session.user.name || undefined);
+    await client.triggerCronJob(id);
     return { success: true };
   } catch (error) {
     console.error('Error triggering task:', error);
