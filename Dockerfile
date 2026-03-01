@@ -8,6 +8,9 @@ COPY prisma ./prisma/
 
 RUN npm ci
 
+# Install Playwright Chromium browser
+RUN npx playwright install chromium --with-deps 2>/dev/null || true
+
 # Stage 2: Builder
 FROM node:20-alpine AS builder
 WORKDIR /app
@@ -27,8 +30,12 @@ WORKDIR /app
 
 ENV NODE_ENV production
 
-# Install Docker CLI for log access
-RUN apk add --no-cache docker-cli
+# Install Docker CLI for log access and Chromium dependencies for Playwright
+RUN apk add --no-cache docker-cli chromium nss freetype harfbuzz ca-certificates ttf-freefont
+
+# Set Playwright to use system Chromium
+ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs

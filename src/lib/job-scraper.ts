@@ -1,8 +1,8 @@
 /**
  * Job Scraper Service
  * 
- * Scrapes job listings from Indeed and LinkedIn based on JobSearch criteria.
- * Uses public search URLs with HTTP fetching and HTML parsing.
+ * Scrapes job listings from Indeed (using Playwright headless browser)
+ * and LinkedIn (using their public guest API).
  */
 
 import { db } from '@/lib/db';
@@ -65,141 +65,182 @@ function stripHtml(html: string): string {
 }
 
 /**
- * Scrape Indeed job listings using their public search page
- * Indeed has blocked RSS feeds, so we scrape their search results page
+ * Parse relative date strings like "3 days ago" or "Just posted"
+ */
+function parseRelativeDate(text: string): Date | null {
+  const lower = text.toLowerCase().trim();
+  const now = new Date();
+
+  if (lower.includes('just posted') || lower.includes('today') || lower.includes('just now')) {
+    return now;
+  }
+
+  const match = lower.match(/(\d+)\s*(day|hour|week|month)s?\s*ago/);
+  if (match) {
+    const value = parseInt(match[1], 10);
+    const unit = match[2];
+    switch (unit) {
+      case 'hour': return new Date(now.getTime() - value * 60 * 60 * 1000);
+      case 'day': return new Date(now.getTime() - value * 24 * 60 * 60 * 1000);
+      case 'week': return new Date(now.getTime() - value * 7 * 24 * 60 * 60 * 1000);
+      case 'month': return new Date(now.getTime() - value * 30 * 24 * 60 * 60 * 1000);
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Scrape Indeed job listings using Playwright headless browser.
+ * Indeed blocks simple HTTP requests, so we need a real browser.
  */
 async function scrapeIndeed(keywords: string[], location: string | null, jobType: string): Promise<ScrapedJob[]> {
   const jobs: ScrapedJob[] = [];
   
+  let chromium;
   try {
-    const query = encodeURIComponent(keywords.join(' '));
-    const loc = location ? encodeURIComponent(location) : '';
-    
-    // Map job type to Indeed's filter values
-    const jtMap: Record<string, string> = {
-      'fulltime': 'jt=fulltime',
-      'parttime': 'jt=parttime', 
-      'contract': 'jt=contract',
-      'internship': 'jt=internship',
-    };
-    const jtParam = jtMap[jobType] || '';
-    
-    // Indeed search page
-    const searchUrl = `https://www.indeed.com/jobs?q=${query}&l=${loc}&sort=date&limit=25${jtParam ? '&' + jtParam : ''}`;
-    
-    const response = await fetch(searchUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Cache-Control': 'no-cache',
-      },
-      signal: AbortSignal.timeout(20000),
+    const pw = await import('playwright');
+    chromium = pw.chromium;
+  } catch {
+    console.warn('[Indeed] Playwright not available, skipping Indeed scraping');
+    return jobs;
+  }
+  
+  let browser;
+  try {
+    browser = await chromium.launch({
+      headless: true,
+      executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined,
+      args: [
+        '--disable-blink-features=AutomationControlled',
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+      ],
     });
     
-    if (!response.ok) {
-      console.warn(`Indeed search returned ${response.status}`);
+    const context = await browser.newContext({
+      userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+      viewport: { width: 1920, height: 1080 },
+      locale: 'en-US',
+    });
+    
+    const page = await context.newPage();
+    
+    // Stealth: hide webdriver flag
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+      Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+      Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+      (window as unknown as { chrome: object }).chrome = { runtime: {} };
+    });
+    
+    // Build search URL
+    const queryParts: string[] = [];
+    queryParts.push(`q=${encodeURIComponent(keywords.join(' '))}`);
+    if (location) queryParts.push(`l=${encodeURIComponent(location)}`);
+    
+    const jtMap: Record<string, string> = {
+      'fulltime': 'fulltime', 'parttime': 'parttime',
+      'contract': 'contract', 'internship': 'internship',
+    };
+    if (jtMap[jobType]) queryParts.push(`jt=${jtMap[jobType]}`);
+    
+    const searchUrl = `https://ca.indeed.com/jobs?${queryParts.join('&')}`;
+    console.log(`[Indeed] Navigating to: ${searchUrl}`);
+    
+    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 25000 });
+    
+    // Random delay to appear human
+    await new Promise(r => setTimeout(r, 2000 + Math.random() * 2000));
+    
+    // Wait for job cards
+    try {
+      await page.waitForSelector('[class*="job_seen_beacon"], [class*="jobsearch-ResultsList"] > li', {
+        timeout: 10000,
+      });
+    } catch {
+      console.log('[Indeed] No job cards found on page');
+      await page.close();
+      await context.close();
       return jobs;
     }
     
-    const html = await response.text();
+    // Extract job cards using Playwright selectors
+    const jobCards = await page.$$('[class*="job_seen_beacon"], [data-jk]');
+    console.log(`[Indeed] Found ${jobCards.length} job cards`);
     
-    // Try to find the JSON data in the page's script tags
-    // Indeed embeds job data as JSON in window._initialData or mosaic-provider-jobcards
-    const jsonMatch = html.match(/window\.mosaic\.providerData\["mosaic-provider-jobcards"\]\s*=\s*(\{[\s\S]*?\});/);
-    if (jsonMatch) {
+    for (const card of jobCards.slice(0, 25)) {
       try {
-        const data = JSON.parse(jsonMatch[1]);
-        const results = data?.metaData?.mosaicProviderJobCardsModel?.results || [];
-        for (const result of results.slice(0, 25)) {
-          const salary = parseSalary(result.extractedSalary?.max ? 
-            `$${result.extractedSalary.min} - $${result.extractedSalary.max} ${result.extractedSalary.type}` : null);
-          
-          let remote: string | null = null;
-          if (result.remoteLocation) remote = 'remote';
-          
-          jobs.push({
-            title: result.title || '',
-            company: result.company || 'Unknown',
-            location: result.formattedLocation || location,
-            description: result.snippet ? stripHtml(result.snippet) : null,
-            salaryMin: salary.min,
-            salaryMax: salary.max,
-            salaryPeriod: salary.period,
-            jobType: jobType || null,
-            remote,
-            postedAt: result.pubDate ? new Date(result.pubDate * 1000) : null,
-            source: 'indeed',
-            sourceUrl: `https://www.indeed.com/viewjob?jk=${result.jobkey}`,
-            sourceId: result.jobkey || null,
-          });
+        // Job key
+        let jobKey = await card.getAttribute('data-jk');
+        if (!jobKey) {
+          const jkEl = await card.$('[data-jk]');
+          if (jkEl) jobKey = await jkEl.getAttribute('data-jk');
         }
-      } catch (e) {
-        console.warn('Failed to parse Indeed JSON data:', e);
-      }
-    }
-    
-    // Fallback: parse HTML job cards if JSON extraction failed
-    if (jobs.length === 0) {
-      // Match job cards by looking for data-jk attributes (Indeed job keys)
-      const jobKeyRegex = /data-jk="([a-f0-9]+)"/gi;
-      const titleRegex = /<h2[^>]*class="[^"]*jobTitle[^"]*"[^>]*>[\s\S]*?<span[^>]*>([\s\S]*?)<\/span>/gi;
-      const companyRegex = /<span[^>]*data-testid="company-name"[^>]*>([\s\S]*?)<\/span>/gi;
-      const locationRegex = /<div[^>]*data-testid="text-location"[^>]*>([\s\S]*?)<\/div>/gi;
-      
-      const jobKeys: string[] = [];
-      let km;
-      while ((km = jobKeyRegex.exec(html)) !== null) {
-        if (!jobKeys.includes(km[1])) jobKeys.push(km[1]);
-      }
-      
-      const titles: string[] = [];
-      let tm;
-      while ((tm = titleRegex.exec(html)) !== null) {
-        titles.push(stripHtml(tm[1]));
-      }
-      
-      const companies: string[] = [];
-      let cm;
-      while ((cm = companyRegex.exec(html)) !== null) {
-        companies.push(stripHtml(cm[1]));
-      }
-      
-      const locations: string[] = [];
-      let lm;
-      while ((lm = locationRegex.exec(html)) !== null) {
-        locations.push(stripHtml(lm[1]));
-      }
-      
-      const count = Math.min(jobKeys.length, titles.length);
-      for (let i = 0; i < count; i++) {
+        if (!jobKey) continue;
+        
+        // Title
+        const titleEl = await card.$('[class*="jobTitle"] a, h2 a, .jobTitle, a[data-jk]');
+        const title = titleEl ? (await titleEl.innerText()).trim() : '';
+        if (!title) continue;
+        
+        // Company
+        const companyEl = await card.$('[data-testid="company-name"], [class*="companyName"]');
+        const company = companyEl ? (await companyEl.innerText()).trim() : 'Unknown';
+        
+        // Location
+        const locationEl = await card.$('[data-testid="text-location"], [class*="companyLocation"]');
+        const jobLocation = locationEl ? (await locationEl.innerText()).trim() : location;
+        
+        // Salary
+        const salaryEl = await card.$('[class*="salary-snippet"], [class*="salaryText"], [data-testid="attribute_snippet_testid"]');
+        const salaryText = salaryEl ? (await salaryEl.innerText()).trim() : '';
+        const salary = parseSalary(salaryText || null);
+        
+        // Posted date
+        const dateEl = await card.$('[class*="date"], [data-testid="myJobsStateDate"]');
+        const dateText = dateEl ? (await dateEl.innerText()).trim() : '';
+        const postedAt = parseRelativeDate(dateText);
+        
+        // Snippet
+        const snippetEl = await card.$('[class*="job-snippet"], [class*="underShelfFooter"]');
+        const snippet = snippetEl ? (await snippetEl.innerText()).trim() : null;
+        
+        // Detect remote
+        const fullText = `${title} ${jobLocation || ''} ${snippet || ''}`;
         let remote: string | null = null;
-        const titleAndLoc = `${titles[i]} ${locations[i] || ''}`;
-        if (/\bremote\b/i.test(titleAndLoc)) remote = 'remote';
-        else if (/\bhybrid\b/i.test(titleAndLoc)) remote = 'hybrid';
+        if (/\bremote\b/i.test(fullText)) remote = 'remote';
+        else if (/\bhybrid\b/i.test(fullText)) remote = 'hybrid';
         
         jobs.push({
-          title: titles[i],
-          company: companies[i] || 'Unknown',
-          location: locations[i] || location,
-          description: null,
-          salaryMin: null,
-          salaryMax: null,
-          salaryPeriod: null,
+          title,
+          company,
+          location: jobLocation,
+          description: snippet,
+          salaryMin: salary.min ? Math.round(salary.min) : null,
+          salaryMax: salary.max ? Math.round(salary.max) : null,
+          salaryPeriod: salary.period,
           jobType: jobType || null,
           remote,
-          postedAt: null,
+          postedAt,
           source: 'indeed',
-          sourceUrl: `https://www.indeed.com/viewjob?jk=${jobKeys[i]}`,
-          sourceId: jobKeys[i],
+          sourceUrl: `https://ca.indeed.com/viewjob?jk=${jobKey}`,
+          sourceId: jobKey,
         });
+      } catch (error) {
+        console.error('[Indeed] Error extracting job card:', error);
       }
     }
     
-    console.log(`Indeed: found ${jobs.length} jobs for "${keywords.join(' ')}" in "${location || 'any'}"`);
+    await page.close();
+    await context.close();
+    console.log(`[Indeed] Found ${jobs.length} jobs for "${keywords.join(' ')}" in "${location || 'any'}"`);
   } catch (error) {
-    console.error('Indeed scraping error:', error);
+    console.error('[Indeed] Scraping error:', error);
+  } finally {
+    if (browser) await browser.close();
   }
   
   return jobs;
@@ -217,10 +258,8 @@ async function scrapeLinkedIn(keywords: string[], location: string | null, jobTy
     
     // Map job types to LinkedIn's f_JT filter values
     const jtMap: Record<string, string> = {
-      'fulltime': 'F',
-      'parttime': 'P',
-      'contract': 'C',
-      'internship': 'I',
+      'fulltime': 'F', 'parttime': 'P',
+      'contract': 'C', 'internship': 'I',
     };
     const jtParam = jtMap[jobType] ? `&f_JT=${jtMap[jobType]}` : '';
     
@@ -245,33 +284,22 @@ async function scrapeLinkedIn(keywords: string[], location: string | null, jobTy
     console.log(`LinkedIn response: ${html.length} chars for "${keywords.join(' ')}" in "${location || 'any'}"`);
     
     // Split by <li> items - each job is in a <li> element
-    const items = html.split(/<li>/i).slice(1); // skip first empty split
+    const items = html.split(/<li>/i).slice(1);
     
     for (const item of items.slice(0, 25)) {
-      // Extract title from h3.base-search-card__title
       const titleMatch = item.match(/<h3[^>]*class="[^"]*base-search-card__title[^"]*"[^>]*>([\s\S]*?)<\/h3>/);
-      
-      // Extract company from h4.base-search-card__subtitle (contains nested <a>)
       const companyMatch = item.match(/<h4[^>]*class="[^"]*base-search-card__subtitle[^"]*"[^>]*>([\s\S]*?)<\/h4>/);
-      
-      // Extract location from span.job-search-card__location
       const locationMatch = item.match(/<span[^>]*class="[^"]*job-search-card__location[^"]*"[^>]*>([\s\S]*?)<\/span>/);
-      
-      // Extract link - can be linkedin.com or subdomain like in.linkedin.com
       const linkMatch = item.match(/<a[^>]*href="(https?:\/\/[^"]*linkedin\.com\/jobs\/view\/[^"]*)"[^>]*/);
-      
-      // Extract date
       const dateMatch = item.match(/<time[^>]*datetime="([^"]*)"[^>]*/);
       
       const title = titleMatch ? stripHtml(titleMatch[1]) : '';
       const company = companyMatch ? stripHtml(companyMatch[1]) : 'Unknown';
       const jobLocation = locationMatch ? stripHtml(locationMatch[1]) : location;
-      // Clean URL: take the base URL without query params and normalize to www.linkedin.com
       let link = linkMatch ? linkMatch[1].split('?')[0] : '';
       link = link.replace(/https?:\/\/[a-z]+\.linkedin\.com/, 'https://www.linkedin.com');
       const postedAt = dateMatch ? new Date(dateMatch[1]) : null;
       
-      // Detect remote
       let remote: string | null = null;
       const locText = (jobLocation || '') + ' ' + title;
       if (/\bremote\b/i.test(locText)) remote = 'remote';
@@ -393,7 +421,6 @@ export async function scrapeForSearch(searchId: string): Promise<{ added: number
       });
       added++;
     } catch (error) {
-      // Likely a unique constraint violation (duplicate), skip
       if (error instanceof Error && error.message.includes('Unique constraint')) {
         skipped++;
       } else {
