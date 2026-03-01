@@ -535,6 +535,26 @@ export default function JobsTab({ onUpdate }: JobsTabProps) {
                     {job.remote && (
                       <span className={styles.remoteBadge}>{job.remote}</span>
                     )}
+                    {job.jobApplication && (
+                      <span
+                        className={styles.appStatusBadge}
+                        style={{
+                          background: job.jobApplication.status === 'submitted' ? 'rgba(34,197,94,0.15)' :
+                                     job.jobApplication.status === 'needs_review' ? 'rgba(245,158,11,0.15)' :
+                                     job.jobApplication.status === 'failed' ? 'rgba(239,68,68,0.15)' :
+                                     'rgba(139,92,246,0.15)',
+                          color: job.jobApplication.status === 'submitted' ? '#22c55e' :
+                                 job.jobApplication.status === 'needs_review' ? '#f59e0b' :
+                                 job.jobApplication.status === 'failed' ? '#ef4444' :
+                                 '#8b5cf6',
+                        }}
+                      >
+                        {job.jobApplication.status === 'submitted' ? '✓ Applied' :
+                         job.jobApplication.status === 'needs_review' ? '⚠ Review' :
+                         job.jobApplication.status === 'failed' ? '✗ Failed' :
+                         '⏳ In Progress'}
+                      </span>
+                    )}
                     {job.searchMatchScore !== null && (
                       <span className={styles.aiScoreBadge} style={{ background: `${getScoreColor(job.searchMatchScore)}22`, color: getScoreColor(job.searchMatchScore), borderColor: getScoreColor(job.searchMatchScore) }}>
                         Search: {Math.round(job.searchMatchScore)}%

@@ -1691,6 +1691,14 @@
    AUTO APPLY
    ============================================ */
 
+.appStatusBadge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+}
+
 .applyIconBtn {
   background: none;
   border: none;
