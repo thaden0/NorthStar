@@ -1686,3 +1686,182 @@
 .coverLetterContent em {
   font-style: italic;
 }
+
+/* ============================================
+   AUTO APPLY
+   ============================================ */
+
+.applyActionRow {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.applyBtn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  border: none;
+  border-radius: var(--radius-md);
+  color: white;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex: 1;
+  justify-content: center;
+}
+
+.applyBtn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #2563eb, #7c3aed);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.applyBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.coverLetterSmallBtn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--glass-2);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.coverLetterSmallBtn:hover:not(:disabled) {
+  background: var(--glass-3);
+  color: var(--text-primary);
+}
+
+.coverLetterSmallBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Application Progress Modal */
+.applyModal {
+  background: var(--bg-primary);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-xl);
+  width: 100%;
+  max-width: 800px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.4);
+}
+
+.applyModalHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--glass-border);
+  flex-shrink: 0;
+}
+
+.applyModalHeader h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.applyModalBody {
+  padding: var(--space-5);
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.applyScreenshot {
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.applyScreenshotLabel {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--glass-1);
+  border-bottom: 1px solid var(--glass-border);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.applyScreenshotImg {
+  width: 100%;
+  max-height: 300px;
+  object-fit: contain;
+  background: #0a0a14;
+}
+
+.applyStepsList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.applyStep {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  transition: background var(--transition-fast);
+}
+
+.applyStep:hover {
+  background: var(--glass-1);
+}
+
+.applyStepIcon {
+  flex-shrink: 0;
+  width: 20px;
+  text-align: center;
+  font-size: 0.8rem;
+}
+
+.applyStepText {
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.applyStepSuccess .applyStepText {
+  color: var(--text-primary);
+}
+
+.applyStepError .applyStepText {
+  color: #ef4444;
+}
+
+.applyReviewNote {
+  padding: var(--space-4);
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}

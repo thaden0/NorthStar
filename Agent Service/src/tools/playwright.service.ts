@@ -65,7 +65,7 @@ export class PlaywrightService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async getContext(): Promise<BrowserContext> {
+  public async getContext(): Promise<BrowserContext> {
     if (!this.browser) {
       await this.initBrowser();
     }

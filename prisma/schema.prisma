@@ -47,6 +47,7 @@ model User {
   jobSearches       JobSearch[]
   resumes           Resume[]
   coverLetters      CoverLetter[]
+  jobApplications   JobApplication[]
 
   @@index([email])
 }
@@ -752,6 +753,7 @@ model Job {
   jobSearch       JobSearch @relation(fields: [jobSearchId], references: [id], onDelete: Cascade)
   resume          Resume?   @relation("JobResume", fields: [resumeId], references: [id], onDelete: SetNull)
   coverLetter     CoverLetter?
+  jobApplication  JobApplication?
 
   @@unique([sourceUrl, userId])  // Don't store same job twice for same user
   @@index([jobSearchId])
@@ -779,4 +781,41 @@ model CoverLetter {
   job         Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
   
   @@index([userId])
+}
+
+// Automated job application tracking
+model JobApplication {
+  id              String    @id @default(cuid())
+  userId          String
+  jobId           String    @unique
+
+  // Application status
+  status          String    @default("pending")
+  // "pending" | "in_progress" | "navigating" | "filling" | "submitting" | "submitted" | "failed" | "needs_review" | "cancelled"
+
+  // Resume + cover letter used
+  resumeId        String?
+  coverLetterId   String?
+
+  // Step tracking
+  steps           String    @db.Text  // JSON: ApplicationStep[]
+  currentStep     String?             // Current step description
+  totalSteps      Int       @default(0)
+
+  // Result
+  confirmationId  String?
+  errorMessage    String?   @db.Text
+  lastScreenshot  String?   @db.Text  // Base64 of last screenshot
+
+  // Timing
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job             Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
 }

@@ -5,7 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   FiSearch, FiExternalLink, FiHeart, FiMapPin,
   FiDollarSign, FiClock, FiFilter, FiX, FiBriefcase,
-  FiFileText, FiDownload, FiRefreshCw, FiCheck
+  FiFileText, FiDownload, FiRefreshCw, FiCheck, FiPlay,
+  FiAlertCircle, FiImage
 } from 'react-icons/fi';
 import styles from './jobSearch.module.css';
 
@@ -93,6 +94,21 @@ export default function JobsTab({ onUpdate }: JobsTabProps) {
   const [isGeneratingCover, setIsGeneratingCover] = useState<string | null>(null); // jobId being generated
   const [coverLetterError, setCoverLetterError] = useState<string | null>(null);
   const [jobsWithCoverLetters, setJobsWithCoverLetters] = useState<Set<string>>(new Set());
+
+  // Application agent
+  interface ApplicationStep {
+    id: number;
+    timestamp: string;
+    action: string;
+    description: string;
+    screenshot?: string;
+    success: boolean;
+    details?: string;
+  }
+  const [applyJobId, setApplyJobId] = useState<string | null>(null);
+  const [applySteps, setApplySteps] = useState<ApplicationStep[]>([]);
+  const [applyStatus, setApplyStatus] = useState<'idle' | 'running' | 'submitted' | 'needs_review' | 'failed'>('idle');
+  const [applyScreenshot, setApplyScreenshot] = useState<string | null>(null);
 
   const fetchJobs = useCallback(async () => {
     setIsLoading(true);
@@ -193,6 +209,76 @@ export default function JobsTab({ onUpdate }: JobsTabProps) {
 
   const downloadCoverLetter = (jobId: string) => {
     window.open(`/api/job-search/jobs/${jobId}/cover-letter/pdf`, '_blank');
+  };
+
+  // Application agent functions
+  const startApplication = async (jobId: string) => {
+    setApplyJobId(jobId);
+    setApplySteps([]);
+    setApplyStatus('running');
+    setApplyScreenshot(null);
+
+    try {
+      const res = await fetch(`/api/job-search/jobs/${jobId}/apply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        setApplyStatus('failed');
+        setApplySteps([{ id: 1, timestamp: new Date().toISOString(), action: 'error', description: err.error || 'Failed to start', success: false }]);
+        return;
+      }
+
+      if (!res.body) {
+        setApplyStatus('failed');
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.substring(6));
+              if (data.type === 'step') {
+                setApplySteps(prev => [...prev, data.step]);
+                if (data.step.screenshot) {
+                  setApplyScreenshot(data.step.screenshot);
+                }
+              } else if (data.type === 'complete') {
+                setApplyStatus(data.result?.status === 'submitted' ? 'submitted' : data.result?.status === 'needs_review' ? 'needs_review' : 'failed');
+                if (data.result?.lastScreenshot) {
+                  setApplyScreenshot(data.result.lastScreenshot);
+                }
+                // Refresh job list if submitted
+                if (data.result?.status === 'submitted') {
+                  fetchJobs();
+                  onUpdate();
+                }
+              } else if (data.type === 'error') {
+                setApplyStatus('failed');
+                setApplySteps(prev => [...prev, { id: prev.length + 1, timestamp: new Date().toISOString(), action: 'error', description: data.error, success: false }]);
+              }
+            } catch { /* ignore parse errors */ }
+          }
+        }
+      }
+    } catch (err) {
+      setApplyStatus('failed');
+      setApplySteps(prev => [...prev, { id: prev.length + 1, timestamp: new Date().toISOString(), action: 'error', description: `Network error: ${err}`, success: false }]);
+    }
   };
 
   const updateStatus = (job: Job, status: string) => {
@@ -558,6 +644,35 @@ export default function JobsTab({ onUpdate }: JobsTabProps) {
                   </div>
                 </div>
 
+                {/* Apply + Cover Letter Actions */}
+                <div className={styles.applyActionRow}>
+                  <button
+                    className={styles.applyBtn}
+                    onClick={() => startApplication(selectedJob.id)}
+                    disabled={applyStatus === 'running' || selectedJob.status === 'applied'}
+                  >
+                    {selectedJob.status === 'applied' ? (
+                      <><FiCheck /> Applied</>
+                    ) : applyStatus === 'running' && applyJobId === selectedJob.id ? (
+                      <><FiRefreshCw className={styles.spinning} /> Applying...</>
+                    ) : (
+                      <><FiPlay /> Auto Apply</>
+                    )}
+                  </button>
+                  <button
+                    className={styles.coverLetterSmallBtn}
+                    onClick={() => viewCoverLetter(selectedJob.id)}
+                    disabled={isGeneratingCover === selectedJob.id}
+                  >
+                    {isGeneratingCover === selectedJob.id ? (
+                      <FiRefreshCw className={styles.spinning} />
+                    ) : (
+                      <FiFileText />
+                    )}
+                    Cover Letter
+                  </button>
+                </div>
+
                 {/* Description */}
                 {selectedJob.description && (
                   <div className={styles.descriptionSection}>
@@ -676,6 +791,102 @@ export default function JobsTab({ onUpdate }: JobsTabProps) {
                     }}
                   />
                 ) : null}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Application Progress Modal */}
+      <AnimatePresence>
+        {applyStatus !== 'idle' && (
+          <motion.div
+            className={styles.modalOverlay}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => { if (applyStatus !== 'running') { setApplyStatus('idle'); setApplySteps([]); setApplyScreenshot(null); setApplyJobId(null); } }}
+          >
+            <motion.div
+              className={styles.applyModal}
+              initial={{ opacity: 0, y: 40, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 40, scale: 0.95 }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className={styles.applyModalHeader}>
+                <h2>
+                  {applyStatus === 'running' && <><FiRefreshCw className={styles.spinning} /> Applying...</>}
+                  {applyStatus === 'submitted' && <><FiCheck style={{ color: '#22c55e' }} /> Application Submitted!</>}
+                  {applyStatus === 'needs_review' && <><FiAlertCircle style={{ color: '#f59e0b' }} /> Needs Review</>}
+                  {applyStatus === 'failed' && <><FiAlertCircle style={{ color: '#ef4444' }} /> Application Failed</>}
+                </h2>
+                {applyStatus !== 'running' && (
+                  <button
+                    className={styles.coverLetterClose}
+                    onClick={() => { setApplyStatus('idle'); setApplySteps([]); setApplyScreenshot(null); setApplyJobId(null); }}
+                  >
+                    <FiX />
+                  </button>
+                )}
+              </div>
+
+              <div className={styles.applyModalBody}>
+                {/* Screenshot Preview */}
+                {applyScreenshot && (
+                  <div className={styles.applyScreenshot}>
+                    <div className={styles.applyScreenshotLabel}>
+                      <FiImage /> Live Preview
+                    </div>
+                    <img
+                      src={`data:image/png;base64,${applyScreenshot}`}
+                      alt="Application progress"
+                      className={styles.applyScreenshotImg}
+                    />
+                  </div>
+                )}
+
+                {/* Steps List */}
+                <div className={styles.applyStepsList}>
+                  {applySteps.map(step => (
+                    <div
+                      key={step.id}
+                      className={`${styles.applyStep} ${step.success ? styles.applyStepSuccess : styles.applyStepError}`}
+                    >
+                      <span className={styles.applyStepIcon}>
+                        {step.action === 'error' || step.action === 'needs_review'
+                          ? '❌'
+                          : step.action === 'complete'
+                          ? '✅'
+                          : step.action === 'navigating'
+                          ? '🌐'
+                          : step.action === 'filling_field'
+                          ? '✏️'
+                          : step.action === 'clicking'
+                          ? '👆'
+                          : step.action === 'uploading'
+                          ? '📎'
+                          : step.action === 'screenshot'
+                          ? '📸'
+                          : '⏳'}
+                      </span>
+                      <span className={styles.applyStepText}>{step.description}</span>
+                    </div>
+                  ))}
+                  {applyStatus === 'running' && (
+                    <div className={styles.applyStep}>
+                      <span className={styles.applyStepIcon}><FiRefreshCw className={styles.spinning} /></span>
+                      <span className={styles.applyStepText} style={{ opacity: 0.6 }}>Working...</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Details for needs_review */}
+                {applyStatus === 'needs_review' && applySteps.length > 0 && applySteps[applySteps.length - 1].details && (
+                  <div className={styles.applyReviewNote}>
+                    <p>{applySteps[applySteps.length - 1].details}</p>
+                  </div>
+                )}
               </div>
             </motion.div>
           </motion.div>

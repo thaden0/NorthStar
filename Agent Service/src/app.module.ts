@@ -13,6 +13,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { MemoryModule } from './memory/memory.module';
 import { JobScoringModule } from './job-scoring/job-scoring.module';
 import { CoverLetterModule } from './cover-letter/cover-letter.module';
+import { JobApplyModule } from './job-apply/job-apply.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -34,6 +35,7 @@ import { HealthController } from './health.controller';
     MemoryModule,
     JobScoringModule,
     CoverLetterModule,
+    JobApplyModule,
   ],
   controllers: [HealthController],
 })
