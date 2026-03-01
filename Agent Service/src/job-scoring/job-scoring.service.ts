@@ -9,7 +9,7 @@ export class JobScoringService {
   constructor(private readonly ollamaService: OllamaService) {}
 
   async scoreJobs(dto: JobScoringRequestDto): Promise<JobScoreResult[]> {
-    const model = dto.model || 'phi4:latest';
+    const model = dto.model || 'qwen3:latest';
     const results: JobScoreResult[] = [];
 
     // Build context about the search and candidate
@@ -116,7 +116,7 @@ JOBS TO SCORE:
 
 ${jobDescriptions}
 
-Respond with ONLY the JSON scores object. No markdown, no explanation, just the JSON.`;
+Respond with ONLY the JSON scores object. No markdown, no explanation, no thinking, just the JSON. /no_think`;
 
     try {
       const result = await this.ollamaService.rawChat({
@@ -130,6 +130,9 @@ Respond with ONLY the JSON scores object. No markdown, no explanation, just the 
 
       // Parse JSON from response, handling potential markdown wrapping
       let content = result.content.trim();
+      
+      // Strip qwen3 thinking tags if present
+      content = content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
       
       // Strip markdown code fences if present
       if (content.startsWith('```')) {

@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
       include: {
         jobSearch: true,
       },
-      take: 30, // Process in batches of 30
+      take: 9, // Process 9 per call (3 LLM batches) to avoid HTTP timeout
       orderBy: { createdAt: 'desc' },
     });
 
