@@ -121,8 +121,9 @@ export class JobApplyService {
       let applied = false;
       let needsReview = false;
       const errorMsg = '';
+      let consecutiveErrors = 0;
 
-      while (stepCount < this.MAX_STEPS && !applied && !needsReview) {
+      while (stepCount < this.MAX_STEPS && !applied && !needsReview && consecutiveErrors < 3) {
         // Analyze the current page
         const analysis = await this.analyzePage(page);
 
@@ -167,7 +168,9 @@ export class JobApplyService {
             await page.click(btn.selector, { timeout: 5000 });
             await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
             await this.sleep(1500);
+            consecutiveErrors = 0;
           } catch (err) {
+            consecutiveErrors++;
             addStep({
               action: 'error',
               description: `Failed to click "${btn.text}": ${err instanceof Error ? err.message : err}`,
@@ -282,7 +285,9 @@ export class JobApplyService {
               await page.click(submitBtn.selector, { timeout: 5000 });
               await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
               await this.sleep(2000);
+              consecutiveErrors = 0;
             } catch (err) {
+              consecutiveErrors++;
               addStep({
                 action: 'error',
                 description: `Failed to click submit: ${err instanceof Error ? err.message : err}`,
@@ -333,14 +338,18 @@ export class JobApplyService {
         }
       }
 
-      if (stepCount >= this.MAX_STEPS && !applied && !needsReview) {
+      if (!applied && !needsReview) {
         const screenshot = (await page.screenshot()).toString('base64');
         lastScreenshot = screenshot;
+        const reason = consecutiveErrors >= 3
+          ? 'Too many errors — unable to interact with the page'
+          : 'Maximum steps reached — application may be incomplete';
         addStep({
           action: 'needs_review',
-          description: 'Maximum steps reached — application may be incomplete',
+          description: reason,
           screenshot,
           success: false,
+          details: 'The agent was unable to complete the application. Please apply manually.',
         });
         needsReview = true;
       }
@@ -384,52 +393,104 @@ export class JobApplyService {
     const title = await page.title();
 
     const result = await page.evaluate(() => {
+      // Helper: generate a robust selector for an element
+      function getSelector(el: Element): string {
+        // 1. ID is best
+        if (el.id) return `#${el.id}`;
+        // 2. data-testid
+        const testId = el.getAttribute('data-testid') || el.getAttribute('data-test-id');
+        if (testId) return `[data-testid="${testId}"]`;
+        // 3. For buttons/links use text-based selector
+        const tag = el.tagName.toLowerCase();
+        const text = (el.textContent?.trim() || '').substring(0, 60);
+        if (text && (tag === 'button' || tag === 'a' || el.getAttribute('role') === 'button')) {
+          // Use :has-text for Playwright — but since we're returning strings, use role-based
+          const ariaLabel = el.getAttribute('aria-label');
+          if (ariaLabel) return `${tag}[aria-label="${ariaLabel}"]`;
+          // Use unique class + text combo
+          const cls = el.className && typeof el.className === 'string' ? el.className.split(' ').filter(c => c && c.length > 2 && !c.startsWith('css-')).slice(0, 2).join('.') : '';
+          if (cls) return `${tag}.${cls}`;
+        }
+        // 4. name attribute
+        const name = el.getAttribute('name');
+        if (name) return `${tag}[name="${name}"]`;
+        // 5. Combine tag + class
+        const cls = el.className && typeof el.className === 'string' ? el.className.split(' ').filter(c => c && c.length > 2).slice(0, 2).join('.') : '';
+        if (cls) return `${tag}.${cls}`;
+        // 6. aria-label
+        const ariaL = el.getAttribute('aria-label');
+        if (ariaL) return `${tag}[aria-label="${ariaL}"]`;
+        // Fallback: basic CSS path
+        return tag;
+      }
+
+      // Helper: is the element likely a real interactive button (not nav/skip/menu)
+      function isInteractiveButton(el: Element): boolean {
+        const text = (el.textContent?.trim() || '').toLowerCase();
+        const cls = (typeof el.className === 'string' ? el.className : '').toLowerCase();
+        const ariaLabel = (el.getAttribute('aria-label') || '').toLowerCase();
+        const role = (el.getAttribute('role') || '').toLowerCase();
+
+        // Exclude navigation, skip, header, menu, close, share buttons
+        const excludeTexts = ['skip', 'menu', 'close', 'share', 'bookmark', 'save job', 'sign in', 'log in', 'register', 'cookie', 'accept', 'dismiss', 'notification'];
+        if (excludeTexts.some(ex => text.startsWith(ex) || text === ex)) return false;
+        if (cls.includes('gnav') || cls.includes('nav-') || cls.includes('skip') || cls.includes('header-') || cls.includes('cookie') || cls.includes('modal-close')) return false;
+        if (ariaLabel.includes('skip') || ariaLabel.includes('menu') || ariaLabel.includes('close') || ariaLabel.includes('navigation')) return false;
+        if (role === 'menuitem' || role === 'tab') return false;
+
+        // Must be visible and reasonably sized
+        const rect = el.getBoundingClientRect();
+        if (rect.width < 20 || rect.height < 10) return false;
+        if (rect.top < 0 || rect.left < 0) return false;
+
+        return true;
+      }
+
       // Find apply / submit buttons
-      const allButtons = Array.from(document.querySelectorAll('button, input[type="submit"], a.btn, a[class*="apply"], [role="button"]'));
-      const applyKeywords = ['apply', 'submit application', 'quick apply', 'easy apply', 'start application'];
-      const submitKeywords = ['submit', 'next', 'continue', 'send', 'complete', 'finish', 'save & continue'];
+      const allButtons = Array.from(document.querySelectorAll('button, input[type="submit"], a[class*="apply"], a[class*="btn"], [role="button"]'));
+      const applyKeywords = ['apply now', 'apply', 'submit application', 'quick apply', 'easy apply', 'start application', 'apply for this job', 'apply to this job'];
+      const submitKeywords = ['submit', 'next', 'continue', 'send', 'complete', 'finish', 'save & continue', 'save and continue', 'review', 'confirm'];
 
       const applyButtons = allButtons
         .filter(el => {
+          if (!isInteractiveButton(el)) return false;
           const text = (el.textContent?.trim() || '').toLowerCase();
           return applyKeywords.some(k => text.includes(k));
         })
         .slice(0, 3)
-        .map((el, i) => {
-          const tag = el.tagName.toLowerCase();
-          const id = el.id ? `#${el.id}` : '';
-          const cls = el.className && typeof el.className === 'string' ? `.${el.className.split(' ')[0]}` : '';
-          return {
-            text: el.textContent?.trim() || '',
-            selector: id || `${tag}${cls}:nth-of-type(${i + 1})`,
-          };
-        });
+        .map(el => ({
+          text: (el.textContent?.trim() || '').substring(0, 80),
+          selector: getSelector(el),
+        }));
 
       const submitButtons = allButtons
         .filter(el => {
+          if (!isInteractiveButton(el)) return false;
           const text = (el.textContent?.trim() || '').toLowerCase();
           const type = (el as HTMLInputElement).type?.toLowerCase();
-          return submitKeywords.some(k => text.includes(k)) || type === 'submit';
-        })
-        .filter(el => {
-          const text = (el.textContent?.trim() || '').toLowerCase();
-          return !applyKeywords.some(k => text.includes(k)); // exclude apply buttons
+          const isSubmit = submitKeywords.some(k => text.includes(k)) || type === 'submit';
+          const isApply = applyKeywords.some(k => text.includes(k));
+          return isSubmit && !isApply;
         })
         .slice(0, 3)
-        .map((el, i) => {
-          const id = el.id ? `#${el.id}` : '';
-          return {
-            text: el.textContent?.trim() || '',
-            selector: id || `button:nth-of-type(${i + 1})`,
-          };
-        });
+        .map(el => ({
+          text: (el.textContent?.trim() || '').substring(0, 80),
+          selector: getSelector(el),
+        }));
 
       // Find form fields
       const inputs = Array.from(document.querySelectorAll('input, textarea, select'));
       const formFields = inputs
         .filter(el => {
           const type = (el as HTMLInputElement).type?.toLowerCase();
-          return !['hidden', 'submit', 'button', 'reset'].includes(type);
+          if (['hidden', 'submit', 'button', 'reset', 'search'].includes(type)) return false;
+          // Must be visible
+          const rect = el.getBoundingClientRect();
+          if (rect.width < 10 || rect.height < 10) return false;
+          // Exclude search bars and nav inputs
+          const cls = (typeof el.className === 'string' ? el.className : '').toLowerCase();
+          if (cls.includes('search') || cls.includes('nav-') || cls.includes('gnav')) return false;
+          return true;
         })
         .slice(0, 20)
         .map(el => {
@@ -446,7 +507,7 @@ export class JobApplyService {
             label: label || placeholder || ariaLabel || name || id || 'Unknown',
             type: input.tagName === 'SELECT' ? 'select' : input.tagName === 'TEXTAREA' ? 'textarea' : (input.type || 'text'),
             name,
-            id: id ? `#${id}` : `[name="${name}"]`,
+            id: getSelector(el),
             required: input.required,
             value: input.value || '',
           };
@@ -456,7 +517,7 @@ export class JobApplyService {
       const bodyText = document.body.textContent?.toLowerCase() || '';
       const isLoginRequired = bodyText.includes('sign in to apply') ||
         bodyText.includes('log in to apply') ||
-        bodyText.includes('create an account') ||
+        bodyText.includes('create an account to apply') ||
         bodyText.includes('sign up to apply');
 
       // Check for confirmation indicators
