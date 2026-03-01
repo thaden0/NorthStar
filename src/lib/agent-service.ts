@@ -542,11 +542,11 @@ export class AgentServiceClient {
     model: string;
     generatedAt: string;
   }> {
-    const result = await this.fetch<{ success: boolean; data: { content: string; model: string; generatedAt: string } }>('/cover-letter/generate', {
+    const result = await this.fetch<{ content: string; model: string; generatedAt: string }>('/cover-letter/generate', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
-    return result.data;
+    return result;
   }
 }
 
