@@ -464,8 +464,32 @@ export class JobApplyService {
           continue;
         }
 
-        // No forms and no apply buttons — check for links
+        // No forms and no apply buttons — but maybe there's a continue/next button (multi-step wizard)
         if (analysis.applyButtons.length === 0 && analysis.formFields.length === 0) {
+          // Check for submit/continue/next buttons first (Indeed wizard steps like "Add Resume")
+          if (analysis.submitButtons.length > 0) {
+            const submitBtn = analysis.submitButtons[0];
+            addStep({
+              action: 'clicking',
+              description: `Clicking "${submitBtn.text}" to continue...`,
+              success: true,
+            });
+            try {
+              await this.clickByText(page, submitBtn.text, submitBtn.selector);
+              await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+              await this.sleep(2000);
+              consecutiveErrors = 0;
+            } catch (err) {
+              consecutiveErrors++;
+              addStep({
+                action: 'error',
+                description: `Failed to click "${submitBtn.text}": ${err instanceof Error ? err.message : err}`,
+                success: false,
+              });
+            }
+            continue;
+          }
+
           // Try to find any apply-related link on the page
           const applyLink = await page.evaluate(() => {
             const links = Array.from(document.querySelectorAll('a'));
