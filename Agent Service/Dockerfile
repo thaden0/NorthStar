@@ -39,11 +39,19 @@ COPY --from=build /app/package*.json ./
 # Create non-root user
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nestjs
-USER nestjs
+
+# Create browser profiles directory
+RUN mkdir -p /app/browser-profiles
+
+# Create entrypoint script that fixes volume permissions then drops to nestjs
+RUN printf '#!/bin/sh\nchown -R nestjs:nodejs /app/browser-profiles 2>/dev/null || true\nexec su-exec nestjs node dist/main.js\n' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
+
+# Install su-exec for dropping privileges
+RUN apk add --no-cache su-exec
 
 EXPOSE 3001
 
 ENV NODE_ENV=production
 ENV PORT=3001
 
-CMD ["node", "dist/main.js"]
+CMD ["/app/entrypoint.sh"]
