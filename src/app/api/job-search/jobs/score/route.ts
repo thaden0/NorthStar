@@ -7,8 +7,10 @@ import { createAgentClient } from '@/lib/agent-service';
  * Background scoring function — processes ALL unscored jobs in batches of 9.
  * Runs after the HTTP response is sent so the browser never times out.
  */
-async function scoreAllJobs(userId: string, model?: string) {
-  const BATCH_SIZE = 9; // 3 LLM calls per batch (3 jobs each)
+async function scoreAllJobs(userId: string, userEmail: string, userName: string, model?: string) {
+  const BATCH_SIZE = 9;
+
+  console.log(`[Scoring] Starting background scoring for user ${userId}`);
 
   // Get the user's default resume once
   const resume = await db.resume.findFirst({
@@ -30,7 +32,7 @@ async function scoreAllJobs(userId: string, model?: string) {
     ? `${resume.experienceYears} years${resume.targetRole ? ` targeting ${resume.targetRole}` : ''}`
     : '';
 
-  const agentClient = createAgentClient(userId);
+  const agentClient = createAgentClient(userId, userEmail, userName);
   let totalScored = 0;
 
   // Loop until all jobs are scored
@@ -47,7 +49,7 @@ async function scoreAllJobs(userId: string, model?: string) {
     });
 
     if (unscoredJobs.length === 0) {
-      console.log(`[Scoring] Complete. Total scored: ${totalScored}`);
+      console.log(`[Scoring] Complete! Total scored: ${totalScored}`);
       break;
     }
 
@@ -114,14 +116,15 @@ async function scoreAllJobs(userId: string, model?: string) {
           });
           totalScored++;
         }
+        console.log(`[Scoring] Batch done, ${totalScored} total scored`);
       } catch (error) {
         console.error(`[Scoring] Error scoring batch for "${search.name}":`, error);
-        // Mark these jobs with a sentinel so we don't retry them forever in this run
+        // Mark these jobs so we don't retry them forever in this run
         for (const job of jobs) {
           await db.job.update({
             where: { id: job.id },
             data: {
-              searchMatchScore: -1, // Sentinel: failed scoring
+              searchMatchScore: -1,
               candidateMatchScore: -1,
               aiNotes: 'Scoring failed - will retry',
               aiScoredAt: new Date(),
@@ -132,7 +135,7 @@ async function scoreAllJobs(userId: string, model?: string) {
     }
   }
 
-  // Clean up any sentinel values so they get retried next time
+  // Clean up sentinel values so failed jobs get retried next time
   await db.job.updateMany({
     where: { userId, searchMatchScore: -1 },
     data: { searchMatchScore: null, candidateMatchScore: null, aiScoredAt: null, aiNotes: null },
@@ -173,7 +176,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Fire and forget — scoring runs in the background
-    scoreAllJobs(session.userId, model).catch(err => {
+    scoreAllJobs(
+      session.userId,
+      session.user.email,
+      session.user.name || 'User',
+      model,
+    ).catch(err => {
       console.error('[Scoring] Background scoring failed:', err);
     });
 
