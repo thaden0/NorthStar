@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OllamaService } from '../llm/ollama.service';
 import { PlaywrightService } from '../tools/playwright.service';
+import { LoginSessionService } from './login-session.service';
 import { Page, BrowserContext } from 'playwright';
 import * as fs from 'fs';
 
@@ -72,6 +73,7 @@ export class JobApplyService {
   constructor(
     private readonly ollamaService: OllamaService,
     private readonly playwrightService: PlaywrightService,
+    private readonly loginSessionService: LoginSessionService,
   ) {}
 
   async applyToJob(
@@ -97,14 +99,40 @@ export class JobApplyService {
     };
 
     try {
-      // Step 1: Open browser and navigate
+      // Step 1: Open browser and navigate — try persistent profile first
       addStep({
         action: 'navigating',
         description: `Opening ${request.job.company} job listing...`,
         success: true,
       });
 
-      context = await this.playwrightService.getContext();
+      // Detect board and try to use persistent profile
+      const sourceUrl = request.job.sourceUrl?.toLowerCase() || '';
+      let boardKey: string | null = null;
+      if (sourceUrl.includes('indeed.com') || sourceUrl.includes('indeed.ca')) boardKey = 'indeed';
+      else if (sourceUrl.includes('linkedin.com')) boardKey = 'linkedin';
+      else if (sourceUrl.includes('glassdoor.com')) boardKey = 'glassdoor';
+      else if (sourceUrl.includes('ziprecruiter.com')) boardKey = 'ziprecruiter';
+
+      let usedPersistentProfile = false;
+      if (boardKey && request.userInfo?.email) {
+        // Use a simple user ID from email for profile lookup
+        const userId = request.userInfo.email.replace(/[^a-zA-Z0-9]/g, '_');
+        const profileContext = await this.loginSessionService.getApplyContext(userId, boardKey);
+        if (profileContext) {
+          context = profileContext;
+          usedPersistentProfile = true;
+          addStep({
+            action: 'analyzing',
+            description: `Using saved ${boardKey} login session`,
+            success: true,
+          });
+        }
+      }
+
+      if (!usedPersistentProfile) {
+        context = await this.playwrightService.getContext();
+      }
       page = await context!.newPage();
       page.setDefaultTimeout(15000);
 
