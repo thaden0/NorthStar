@@ -65,7 +65,26 @@ export default function JobSearchPage() {
       const res = await fetch('/api/job-search/scrape', { method: 'POST' });
       const data = await res.json();
       if (res.ok) {
-        setScrapeResult(data.message);
+        let message = data.message;
+        
+        // After scraping, score any unscored jobs
+        try {
+          const scoreRes = await fetch('/api/job-search/jobs/score', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+          });
+          if (scoreRes.ok) {
+            const scoreData = await scoreRes.json();
+            if (scoreData.scored > 0) {
+              message += ` | AI scored ${scoreData.scored} jobs`;
+            }
+          }
+        } catch {
+          // Scoring is best-effort, don't fail the refresh
+        }
+        
+        setScrapeResult(message);
         fetchCounts();
       } else {
         setScrapeResult(data.error || 'Scraping failed');

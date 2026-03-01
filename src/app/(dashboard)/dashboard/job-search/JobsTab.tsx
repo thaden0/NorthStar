@@ -84,7 +84,6 @@ export default function JobsTab({ onUpdate }: JobsTabProps) {
   
   // Detail view
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
-  const [isScoring, setIsScoring] = useState(false);
 
   const fetchJobs = useCallback(async () => {
     setIsLoading(true);
@@ -139,26 +138,6 @@ export default function JobsTab({ onUpdate }: JobsTabProps) {
 
   const toggleFavorite = (job: Job) => {
     updateJob(job.id, { isFavorite: !job.isFavorite } as Partial<Job>);
-  };
-
-  const triggerScoring = async () => {
-    setIsScoring(true);
-    try {
-      const res = await fetch('/api/job-search/jobs/score', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        console.log(`Scored ${data.scored} jobs`);
-        fetchJobs();
-      }
-    } catch (error) {
-      console.error('Failed to score jobs:', error);
-    } finally {
-      setIsScoring(false);
-    }
   };
 
   const updateStatus = (job: Job, status: string) => {
@@ -219,18 +198,6 @@ export default function JobsTab({ onUpdate }: JobsTabProps) {
         >
           <FiFilter />
           <span>Filters</span>
-        </button>
-        <button
-          className={styles.addButton}
-          onClick={triggerScoring}
-          disabled={isScoring}
-          title="Score unscored jobs with AI"
-        >
-          {isScoring ? (
-            <><div className={styles.spinner} style={{ width: 16, height: 16 }} /> <span>Scoring...</span></>
-          ) : (
-            <><span>🤖</span> <span>Score Jobs</span></>
-          )}
         </button>
       </div>
 

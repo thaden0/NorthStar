@@ -61,11 +61,13 @@ export async function POST(request: NextRequest) {
     for (const [, jobs] of jobsBySearch) {
       const search = jobs[0].jobSearch;
 
-      // Build resume context
-      let resumeContent: string | null = null;
-      if (resume?.fileData) {
+      // Build resume context - use summary or truncated text, NOT full base64
+      let resumeContent: string | null = resume?.summary || null;
+      if (!resumeContent && resume?.fileData) {
         try {
-          resumeContent = Buffer.from(resume.fileData, 'base64').toString('utf-8');
+          const decoded = Buffer.from(resume.fileData, 'base64').toString('utf-8');
+          // Only use first 3000 chars to keep payload small
+          resumeContent = decoded.substring(0, 3000);
         } catch {
           resumeContent = null;
         }
