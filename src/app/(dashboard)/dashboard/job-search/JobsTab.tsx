@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FiSearch, FiExternalLink, FiHeart, FiMapPin,
-  FiDollarSign, FiClock, FiFilter, FiX, FiBriefcase
+  FiDollarSign, FiClock, FiFilter, FiX, FiBriefcase,
+  FiFileText, FiDownload, FiRefreshCw, FiCheck
 } from 'react-icons/fi';
 import styles from './jobSearch.module.css';
 
@@ -37,6 +38,7 @@ interface Job {
   createdAt: string;
   jobSearch: { name: string } | null;
   resume: { name: string } | null;
+  coverLetter?: { id: string; content: string; version: number } | null;
 }
 
 interface JobsTabProps {
@@ -84,6 +86,13 @@ export default function JobsTab({ onUpdate }: JobsTabProps) {
   
   // Detail view
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+
+  // Cover letter
+  const [coverLetterJobId, setCoverLetterJobId] = useState<string | null>(null);
+  const [coverLetterContent, setCoverLetterContent] = useState<string | null>(null);
+  const [isGeneratingCover, setIsGeneratingCover] = useState<string | null>(null); // jobId being generated
+  const [coverLetterError, setCoverLetterError] = useState<string | null>(null);
+  const [jobsWithCoverLetters, setJobsWithCoverLetters] = useState<Set<string>>(new Set());
 
   const fetchJobs = useCallback(async () => {
     setIsLoading(true);
@@ -138,6 +147,52 @@ export default function JobsTab({ onUpdate }: JobsTabProps) {
 
   const toggleFavorite = (job: Job) => {
     updateJob(job.id, { isFavorite: !job.isFavorite } as Partial<Job>);
+  };
+
+  // Cover letter functions
+  const generateCoverLetter = async (jobId: string) => {
+    setIsGeneratingCover(jobId);
+    setCoverLetterError(null);
+    try {
+      const res = await fetch(`/api/job-search/jobs/${jobId}/cover-letter`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCoverLetterContent(data.content);
+        setCoverLetterJobId(jobId);
+        setJobsWithCoverLetters(prev => new Set([...prev, jobId]));
+      } else {
+        const err = await res.json();
+        setCoverLetterError(err.error || 'Failed to generate');
+      }
+    } catch {
+      setCoverLetterError('Network error');
+    } finally {
+      setIsGeneratingCover(null);
+    }
+  };
+
+  const viewCoverLetter = async (jobId: string) => {
+    try {
+      const res = await fetch(`/api/job-search/jobs/${jobId}/cover-letter`);
+      if (res.ok) {
+        const data = await res.json();
+        setCoverLetterContent(data.content);
+        setCoverLetterJobId(jobId);
+      } else {
+        // No existing cover letter — generate one
+        generateCoverLetter(jobId);
+      }
+    } catch {
+      generateCoverLetter(jobId);
+    }
+  };
+
+  const downloadCoverLetter = (jobId: string) => {
+    window.open(`/api/job-search/jobs/${jobId}/cover-letter/pdf`, '_blank');
   };
 
   const updateStatus = (job: Job, status: string) => {
@@ -310,12 +365,29 @@ export default function JobsTab({ onUpdate }: JobsTabProps) {
                       <h3 className={styles.jobTitle}>{job.title}</h3>
                       <p className={styles.jobCompany}>{job.company}</p>
                     </div>
-                    <button
-                      className={`${styles.favoriteBtn} ${job.isFavorite ? styles.favorited : ''}`}
-                      onClick={e => { e.stopPropagation(); toggleFavorite(job); }}
-                    >
-                      <FiHeart />
-                    </button>
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                      <button
+                        className={`${styles.favoriteBtn} ${isGeneratingCover === job.id ? styles.coverGenerating : ''}`}
+                        onClick={e => { e.stopPropagation(); viewCoverLetter(job.id); }}
+                        title={jobsWithCoverLetters.has(job.id) || job.coverLetter ? 'View cover letter' : 'Generate cover letter'}
+                        disabled={isGeneratingCover === job.id}
+                        style={jobsWithCoverLetters.has(job.id) || job.coverLetter ? { color: '#22c55e' } : {}}
+                      >
+                        {isGeneratingCover === job.id ? (
+                          <FiRefreshCw className={styles.spinning} />
+                        ) : jobsWithCoverLetters.has(job.id) || job.coverLetter ? (
+                          <FiCheck />
+                        ) : (
+                          <FiFileText />
+                        )}
+                      </button>
+                      <button
+                        className={`${styles.favoriteBtn} ${job.isFavorite ? styles.favorited : ''}`}
+                        onClick={e => { e.stopPropagation(); toggleFavorite(job); }}
+                      >
+                        <FiHeart />
+                      </button>
+                    </div>
                   </div>
                   
                   <div className={styles.jobCardMeta}>
@@ -520,6 +592,95 @@ export default function JobsTab({ onUpdate }: JobsTabProps) {
           )}
         </AnimatePresence>
       </div>
+
+      {/* Cover Letter Modal */}
+      <AnimatePresence>
+        {(coverLetterContent || isGeneratingCover) && (
+          <motion.div
+            className={styles.modalOverlay}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => { setCoverLetterContent(null); setCoverLetterJobId(null); setCoverLetterError(null); }}
+          >
+            <motion.div
+              className={styles.coverLetterModal}
+              initial={{ opacity: 0, y: 40, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 40, scale: 0.95 }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className={styles.coverLetterHeader}>
+                <h2>
+                  <FiFileText style={{ marginRight: 8 }} />
+                  Cover Letter
+                  {coverLetterJobId && jobs.find(j => j.id === coverLetterJobId) && (
+                    <span style={{ fontWeight: 400, fontSize: '0.85em', opacity: 0.7, marginLeft: 12 }}>
+                      {jobs.find(j => j.id === coverLetterJobId)?.title} at {jobs.find(j => j.id === coverLetterJobId)?.company}
+                    </span>
+                  )}
+                </h2>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {coverLetterJobId && coverLetterContent && (
+                    <>
+                      <button
+                        className={styles.coverLetterAction}
+                        onClick={() => downloadCoverLetter(coverLetterJobId)}
+                        title="Download"
+                      >
+                        <FiDownload /> Download
+                      </button>
+                      <button
+                        className={styles.coverLetterAction}
+                        onClick={() => generateCoverLetter(coverLetterJobId)}
+                        disabled={!!isGeneratingCover}
+                        title="Regenerate"
+                      >
+                        <FiRefreshCw className={isGeneratingCover ? styles.spinning : ''} /> Regenerate
+                      </button>
+                    </>
+                  )}
+                  <button
+                    className={styles.coverLetterClose}
+                    onClick={() => { setCoverLetterContent(null); setCoverLetterJobId(null); setCoverLetterError(null); }}
+                  >
+                    <FiX />
+                  </button>
+                </div>
+              </div>
+
+              <div className={styles.coverLetterBody}>
+                {isGeneratingCover ? (
+                  <div className={styles.coverLetterGenerating}>
+                    <FiRefreshCw className={styles.spinning} style={{ fontSize: 32, marginBottom: 16 }} />
+                    <p>Generating your cover letter...</p>
+                    <p style={{ fontSize: '0.85em', opacity: 0.6 }}>This may take 30-60 seconds</p>
+                  </div>
+                ) : coverLetterError ? (
+                  <div className={styles.coverLetterError}>
+                    <p>❌ {coverLetterError}</p>
+                    {coverLetterJobId && (
+                      <button onClick={() => generateCoverLetter(coverLetterJobId)}>Try Again</button>
+                    )}
+                  </div>
+                ) : coverLetterContent ? (
+                  <div
+                    className={styles.coverLetterContent}
+                    dangerouslySetInnerHTML={{
+                      __html: coverLetterContent
+                        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+                        .split(/\n\n+/)
+                        .map(p => `<p>${p.trim().replace(/\n/g, '<br>')}</p>`)
+                        .join('')
+                    }}
+                  />
+                ) : null}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

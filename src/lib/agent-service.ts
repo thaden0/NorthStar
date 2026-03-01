@@ -513,6 +513,41 @@ export class AgentServiceClient {
       body: JSON.stringify(payload),
     });
   }
+
+  /**
+   * Generate an AI cover letter for a job
+   */
+  async generateCoverLetter(payload: {
+    job: {
+      title: string;
+      company: string;
+      location: string | null;
+      description: string | null;
+      jobType: string | null;
+      remote: string | null;
+      experienceLevel: string | null;
+    };
+    resumes: Array<{
+      name: string;
+      targetRole: string | null;
+      skills: string[];
+      experienceYears: number | null;
+      summary: string | null;
+      content: string | null;
+    }>;
+    userName: string;
+    model?: string;
+  }): Promise<{
+    content: string;
+    model: string;
+    generatedAt: string;
+  }> {
+    const result = await this.fetch<{ success: boolean; data: { content: string; model: string; generatedAt: string } }>('/cover-letter/generate', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    return result.data;
+  }
 }
 
 /**

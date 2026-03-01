@@ -46,6 +46,7 @@ model User {
   // Job Search relations
   jobSearches       JobSearch[]
   resumes           Resume[]
+  coverLetters      CoverLetter[]
 
   @@index([email])
 }
@@ -750,6 +751,7 @@ model Job {
 
   jobSearch       JobSearch @relation(fields: [jobSearchId], references: [id], onDelete: Cascade)
   resume          Resume?   @relation("JobResume", fields: [resumeId], references: [id], onDelete: SetNull)
+  coverLetter     CoverLetter?
 
   @@unique([sourceUrl, userId])  // Don't store same job twice for same user
   @@index([jobSearchId])
@@ -758,4 +760,23 @@ model Job {
   @@index([aiScore])
   @@index([createdAt])
   @@index([source])
+}
+
+// AI-generated cover letters for job applications
+model CoverLetter {
+  id          String    @id @default(cuid())
+  userId      String
+  jobId       String    @unique
+  
+  content     String    @db.Text    // Generated cover letter text (Markdown)
+  model       String                // LLM model used
+  version     Int       @default(1) // Regeneration count
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job         Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
 }
