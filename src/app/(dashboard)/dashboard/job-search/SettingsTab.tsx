@@ -105,12 +105,12 @@ export default function SettingsTab() {
     if (!loginBoard || loginStatus === 'connecting') return;
 
     const rect = e.currentTarget.getBoundingClientRect();
-    const img = e.currentTarget.querySelector('img');
+    const img = e.currentTarget.querySelector('img') as HTMLImageElement;
     if (!img) return;
 
-    // Scale coordinates to match the actual browser viewport (1280x800)
-    const scaleX = 1280 / img.clientWidth;
-    const scaleY = 800 / img.clientHeight;
+    // Scale click coordinates to match the actual browser viewport
+    const scaleX = img.naturalWidth / img.clientWidth;
+    const scaleY = img.naturalHeight / img.clientHeight;
     const x = Math.round((e.clientX - rect.left) * scaleX);
     const y = Math.round((e.clientY - rect.top) * scaleY);
 

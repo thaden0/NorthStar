@@ -2241,10 +2241,11 @@
 /* Browser view */
 .browserView {
   flex: 1;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   background: #1a1a1a;
-  min-height: 400px;
-  max-height: 500px;
+  min-height: 200px;
+  max-height: calc(90vh - 180px);
   position: relative;
 }
 
@@ -2252,13 +2253,11 @@
   cursor: crosshair;
   position: relative;
   width: 100%;
-  height: 100%;
 }
 
 .browserScreenshot img {
   width: 100%;
-  height: 100%;
-  object-fit: contain;
+  height: auto;
   display: block;
   user-select: none;
 }
