@@ -109,7 +109,7 @@ export default function JobSearchPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        setScrapeResult(data.scored > 0 ? `AI scored ${data.scored} jobs` : 'All jobs already scored');
+        setScrapeResult(data.message || 'Scoring started');
       } else {
         setScrapeResult(data.error || 'Scoring failed');
       }
@@ -117,7 +117,7 @@ export default function JobSearchPage() {
       setScrapeResult('Network error during scoring');
     } finally {
       setIsScoring(false);
-      setTimeout(() => setScrapeResult(null), 8000);
+      setTimeout(() => setScrapeResult(null), 12000);
     }
   };
 
