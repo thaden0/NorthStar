@@ -165,7 +165,7 @@ export class JobApplyService {
             success: true,
           });
           try {
-            await page.click(btn.selector, { timeout: 5000 });
+            await this.clickByText(page, btn.text, btn.selector);
             await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
             await this.sleep(1500);
             consecutiveErrors = 0;
@@ -282,7 +282,7 @@ export class JobApplyService {
               success: true,
             });
             try {
-              await page.click(submitBtn.selector, { timeout: 5000 });
+              await this.clickByText(page, submitBtn.text, submitBtn.selector);
               await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
               await this.sleep(2000);
               consecutiveErrors = 0;
@@ -639,6 +639,62 @@ Respond with ONLY the JSON array, no explanation. /no_think`;
     }
 
     return actions;
+  }
+
+  /**
+   * Click a button using text-based Playwright locators first, falling back to CSS.
+   * This avoids issues with shared dynamic CSS classes (e.g. Indeed's e8ju0x50).
+   */
+  private async clickByText(page: Page, buttonText: string, fallbackSelector: string): Promise<void> {
+    const cleanText = buttonText.trim();
+
+    // Strategy 1: getByRole with exact name
+    try {
+      const byRole = page.getByRole('button', { name: cleanText, exact: false });
+      if (await byRole.first().isVisible({ timeout: 1000 }).catch(() => false)) {
+        await byRole.first().click({ timeout: 5000 });
+        return;
+      }
+    } catch { /* try next */ }
+
+    // Strategy 2: getByRole link
+    try {
+      const byLink = page.getByRole('link', { name: cleanText, exact: false });
+      if (await byLink.first().isVisible({ timeout: 1000 }).catch(() => false)) {
+        await byLink.first().click({ timeout: 5000 });
+        return;
+      }
+    } catch { /* try next */ }
+
+    // Strategy 3: text locator
+    try {
+      const byText = page.locator(`text="${cleanText}"`);
+      if (await byText.first().isVisible({ timeout: 1000 }).catch(() => false)) {
+        await byText.first().click({ timeout: 5000 });
+        return;
+      }
+    } catch { /* try next */ }
+
+    // Strategy 4: contains text with button/link filter
+    try {
+      const words = cleanText.split(/\s+/).slice(0, 3).join(' ');
+      const byContains = page.locator(`button:has-text("${words}"), a:has-text("${words}"), [role="button"]:has-text("${words}")`).first();
+      if (await byContains.isVisible({ timeout: 1000 }).catch(() => false)) {
+        await byContains.click({ timeout: 5000 });
+        return;
+      }
+    } catch { /* try next */ }
+
+    // Strategy 5: fallback to CSS selector with force click
+    try {
+      await page.click(fallbackSelector, { timeout: 5000, force: true });
+    } catch {
+      // Final fallback: JS click
+      await page.evaluate((sel) => {
+        const el = document.querySelector(sel) as HTMLElement;
+        if (el) el.click();
+      }, fallbackSelector);
+    }
   }
 
   private sleep(ms: number): Promise<void> {
