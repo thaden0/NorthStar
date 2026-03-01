@@ -82,6 +82,29 @@ export async function POST(
       } catch { resumeContent = null; }
     }
 
+    // Get job board credentials if available
+    let boardCredentials: { email: string; password: string } | null = null;
+    try {
+      const sourceUrl = job.sourceUrl?.toLowerCase() || '';
+      let board: string | null = null;
+      if (sourceUrl.includes('indeed.com') || sourceUrl.includes('indeed.ca')) board = 'indeed';
+      else if (sourceUrl.includes('linkedin.com')) board = 'linkedin';
+      else if (sourceUrl.includes('glassdoor.com') || sourceUrl.includes('glassdoor.ca')) board = 'glassdoor';
+      else if (sourceUrl.includes('ziprecruiter.com')) board = 'ziprecruiter';
+
+      if (board) {
+        const cred = await (db as any).jobBoardCredential.findUnique({
+          where: { userId_board: { userId: session.userId, board } },
+        });
+        if (cred) {
+          const { decrypt } = await import('@/lib/encryption');
+          boardCredentials = { email: cred.email, password: decrypt(cred.passwordEnc) };
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load board credentials:', e);
+    }
+
     // Check if application already exists
     const existing = await db.jobApplication.findUnique({ where: { jobId: id } });
     if (existing && ['in_progress', 'submitted'].includes(existing.status)) {
@@ -153,6 +176,7 @@ export async function POST(
                 name: session.user.name || 'User',
                 email: session.user.email,
               },
+              boardCredentials: boardCredentials || undefined,
             }),
           });
 

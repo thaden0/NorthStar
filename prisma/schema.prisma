@@ -48,6 +48,7 @@ model User {
   resumes           Resume[]
   coverLetters      CoverLetter[]
   jobApplications   JobApplication[]
+  jobBoardCredentials JobBoardCredential[]
 
   @@index([email])
 }
@@ -818,4 +819,19 @@ model JobApplication {
 
   @@index([userId])
   @@index([status])
+}
+
+model JobBoardCredential {
+  id           String   @id @default(cuid())
+  userId       String
+  board        String   // indeed, linkedin, glassdoor, etc.
+  email        String
+  passwordEnc  String   // AES-256 encrypted password
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, board])
+  @@index([userId])
 }

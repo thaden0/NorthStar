@@ -4,16 +4,17 @@ import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FiSearch, FiFileText, FiBriefcase, FiRefreshCw,
-  FiTrendingUp, FiZap, FiCpu
+  FiTrendingUp, FiZap, FiCpu, FiSettings
 } from 'react-icons/fi';
 import SearchesTab from './SearchesTab';
 import ResumesTab from './ResumesTab';
 import JobsTab from './JobsTab';
+import SettingsTab from './SettingsTab';
 import styles from './jobSearch.module.css';
 
 export const dynamic = 'force-dynamic';
 
-type TabType = 'searches' | 'resumes' | 'jobs';
+type TabType = 'searches' | 'resumes' | 'jobs' | 'settings';
 
 interface StatusCounts {
   [key: string]: number;
@@ -125,6 +126,7 @@ export default function JobSearchPage() {
     { id: 'searches', label: 'Job Searches', icon: <FiSearch />, count: searchCount },
     { id: 'resumes', label: 'Resumes', icon: <FiFileText />, count: resumeCount },
     { id: 'jobs', label: 'Jobs', icon: <FiBriefcase />, count: totalJobs },
+    { id: 'settings', label: 'Settings', icon: <FiSettings />, count: 0 },
   ];
 
   const newCount = jobCounts['new'] || 0;
@@ -256,6 +258,17 @@ export default function JobSearchPage() {
               transition={{ duration: 0.2 }}
             >
               <JobsTab onUpdate={fetchCounts} />
+            </motion.div>
+          )}
+          {activeTab === 'settings' && (
+            <motion.div
+              key="settings"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              transition={{ duration: 0.2 }}
+            >
+              <SettingsTab />
             </motion.div>
           )}
         </AnimatePresence>

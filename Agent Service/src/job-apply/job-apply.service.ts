@@ -39,6 +39,10 @@ export interface ApplyRequest {
     phone?: string;
   };
   model?: string;
+  boardCredentials?: {
+    email: string;
+    password: string;
+  };
 }
 
 export interface ApplyResult {
@@ -237,17 +241,55 @@ export class JobApplyService {
 
         // Check if login is required
         if (analysis.isLoginRequired) {
-          const screenshot = (await page.screenshot()).toString('base64');
-          lastScreenshot = screenshot;
-          addStep({
-            action: 'needs_review',
-            description: 'Login/account required — cannot proceed automatically',
-            screenshot,
-            success: false,
-            details: 'This application requires you to log in or create an account. Please apply manually.',
-          });
-          needsReview = true;
-          break;
+          if (request.boardCredentials) {
+            addStep({
+              action: 'analyzing',
+              description: 'Login required — attempting sign-in with saved credentials...',
+              success: true,
+            });
+
+            const loginSuccess = await this.attemptLogin(page, request.boardCredentials, request.job.sourceUrl);
+            if (loginSuccess) {
+              addStep({
+                action: 'navigating',
+                description: 'Signed in successfully! Continuing application...',
+                success: true,
+              });
+              const screenshot = (await page.screenshot()).toString('base64');
+              lastScreenshot = screenshot;
+              addStep({
+                action: 'screenshot',
+                description: 'After login',
+                screenshot,
+                success: true,
+              });
+              continue; // Re-analyze the page now that we're logged in
+            } else {
+              const screenshot = (await page.screenshot()).toString('base64');
+              lastScreenshot = screenshot;
+              addStep({
+                action: 'needs_review',
+                description: 'Login failed — could not sign in with saved credentials',
+                screenshot,
+                success: false,
+                details: 'The agent could not log in. Check your saved credentials in Job Search settings.',
+              });
+              needsReview = true;
+              break;
+            }
+          } else {
+            const screenshot = (await page.screenshot()).toString('base64');
+            lastScreenshot = screenshot;
+            addStep({
+              action: 'needs_review',
+              description: 'Login required — no credentials saved',
+              screenshot,
+              success: false,
+              details: 'Save your job board login credentials in Settings → Job Search to enable auto-login.',
+            });
+            needsReview = true;
+            break;
+          }
         }
 
         // ALWAYS click apply buttons first — they take priority over any form fields
@@ -746,8 +788,112 @@ Respond with ONLY the JSON array, no explanation. /no_think`;
   }
 
   /**
-   * Detect which job board the URL belongs to and return board-specific selectors.
+   * Attempt to log in to a job board using stored credentials.
    */
+  private async attemptLogin(
+    page: Page,
+    credentials: { email: string; password: string },
+    sourceUrl: string,
+  ): Promise<boolean> {
+    const url = sourceUrl.toLowerCase();
+
+    try {
+      if (url.includes('indeed.com') || url.includes('indeed.ca')) {
+        // Click "Sign in" link if visible
+        try {
+          const signInLink = page.getByRole('link', { name: /sign in/i }).first();
+          if (await signInLink.isVisible({ timeout: 2000 }).catch(() => false)) {
+            await signInLink.click({ timeout: 5000 });
+            await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
+            await this.sleep(2000);
+          }
+        } catch { /* already on login page */ }
+
+        // Look for Google Sign-In button
+        const googleBtn = page.locator('button:has-text("Google"), a:has-text("Google"), [data-provider="google"], button:has-text("Continue with Google")').first();
+        if (await googleBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+          const [popup] = await Promise.all([
+            page.context().waitForEvent('page', { timeout: 10000 }).catch(() => null),
+            googleBtn.click({ timeout: 5000 }),
+          ]);
+
+          const loginPage = popup || page;
+          await this.sleep(2000);
+
+          try {
+            const emailInput = loginPage.locator('input[type="email"], input[name="identifier"]').first();
+            await emailInput.waitFor({ state: 'visible', timeout: 5000 });
+            await emailInput.fill(credentials.email);
+            await this.sleep(500);
+            await loginPage.getByRole('button', { name: /next/i }).first().click({ timeout: 5000 });
+            await this.sleep(3000);
+
+            const passwordInput = loginPage.locator('input[type="password"], input[name="Passwd"]').first();
+            await passwordInput.waitFor({ state: 'visible', timeout: 5000 });
+            await passwordInput.fill(credentials.password);
+            await this.sleep(500);
+            await loginPage.getByRole('button', { name: /next/i }).first().click({ timeout: 5000 });
+            await this.sleep(5000);
+
+            if (popup) await popup.waitForEvent('close', { timeout: 15000 }).catch(() => {});
+            await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+            await page.goto(sourceUrl, { waitUntil: 'domcontentloaded' });
+            await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+            return true;
+          } catch (err) {
+            this.logger.error(`Google login failed: ${err}`);
+            return false;
+          }
+        }
+
+        return this.directEmailLogin(page, credentials, sourceUrl);
+      }
+
+      return this.directEmailLogin(page, credentials, sourceUrl);
+    } catch (error) {
+      this.logger.error(`Login attempt failed: ${error}`);
+      return false;
+    }
+  }
+
+  private async directEmailLogin(
+    page: Page,
+    credentials: { email: string; password: string },
+    sourceUrl: string,
+  ): Promise<boolean> {
+    try {
+      const emailInput = page.locator(
+        'input[type="email"], input[name="email"], input[name="username"], input[id*="email"], input[autocomplete="email"]'
+      ).first();
+      if (!await emailInput.isVisible({ timeout: 3000 }).catch(() => false)) return false;
+
+      await emailInput.fill(credentials.email);
+      await this.sleep(500);
+
+      const passwordInput = page.locator('input[type="password"]').first();
+      if (await passwordInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await passwordInput.fill(credentials.password);
+        await this.sleep(500);
+      }
+
+      const submitBtn = page.locator(
+        'button[type="submit"], button:has-text("Sign in"), button:has-text("Log in"), button:has-text("Continue"), input[type="submit"]'
+      ).first();
+      if (await submitBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await submitBtn.click({ timeout: 5000 });
+        await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+        await this.sleep(3000);
+      }
+
+      await page.goto(sourceUrl, { waitUntil: 'domcontentloaded' });
+      await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+      return true;
+    } catch (error) {
+      this.logger.error(`Direct login failed: ${error}`);
+      return false;
+    }
+  }
+
   private detectJobBoard(url: string): {
     name: string;
     applySelectors: string[];
