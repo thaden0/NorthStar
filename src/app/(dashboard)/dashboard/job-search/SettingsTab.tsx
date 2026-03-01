@@ -26,6 +26,7 @@ export default function SettingsTab() {
   const [checking, setChecking] = useState<string | null>(null);
   const [typeText, setTypeText] = useState('');
   const [isPopup, setIsPopup] = useState(false);
+  const [navUrl, setNavUrl] = useState('');
   const screenshotRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -159,6 +160,19 @@ export default function SettingsTab() {
         setLoginStatus('logged_in');
         setMessage({ type: 'success', text: 'Login successful! Your session is saved.' });
       }
+    } catch { /* ignore */ }
+  };
+
+  const handleNavigate = async () => {
+    if (!loginBoard || !navUrl) return;
+    try {
+      const res = await fetch('/api/job-search/login-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'navigate', board: loginBoard, url: navUrl }),
+      });
+      const data = await res.json();
+      if (data.screenshot) setScreenshot(data.screenshot);
     } catch { /* ignore */ }
   };
 
@@ -310,6 +324,21 @@ export default function SettingsTab() {
               </div>
               <button className={styles.loginCloseBtn} onClick={endSession}>
                 <FiX /> {loginStatus === 'logged_in' ? 'Done' : 'Cancel'}
+              </button>
+            </div>
+
+            {/* URL Bar */}
+            <div className={styles.urlBar}>
+              <input
+                type="text"
+                className={styles.urlInput}
+                value={navUrl}
+                onChange={e => setNavUrl(e.target.value)}
+                placeholder="Navigate to URL..."
+                onKeyDown={e => { if (e.key === 'Enter') handleNavigate(); }}
+              />
+              <button className={styles.urlGoBtn} onClick={handleNavigate} disabled={!navUrl}>
+                Go
               </button>
             </div>
 

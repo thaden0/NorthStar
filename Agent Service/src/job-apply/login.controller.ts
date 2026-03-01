@@ -56,6 +56,21 @@ export class LoginController {
   }
 
   /**
+   * POST /job-apply/login/navigate
+   * Navigate to a URL within the session.
+   */
+  @Post('navigate')
+  async navigate(@Body() body: { sessionId: string; url: string }) {
+    try {
+      await this.loginSessionService.navigate(body.sessionId, body.url);
+      const result = await this.loginSessionService.getScreenshot(body.sessionId);
+      return result;
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  /**
    * POST /job-apply/login/click
    * Click at coordinates.
    */

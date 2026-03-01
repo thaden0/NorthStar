@@ -2295,6 +2295,41 @@
   animation: spin 1s linear infinite;
 }
 
+/* URL bar */
+.urlBar {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background: rgba(0,0,0,0.3);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.urlInput {
+  flex: 1;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-1);
+  padding: var(--space-1) var(--space-2);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-family: monospace;
+}
+
+.urlGoBtn {
+  background: var(--accent-primary);
+  border: none;
+  border-radius: var(--radius-1);
+  padding: var(--space-1) var(--space-3);
+  color: white;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.urlGoBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* Controls */
 .loginControls {
   padding: var(--space-3) var(--space-4);

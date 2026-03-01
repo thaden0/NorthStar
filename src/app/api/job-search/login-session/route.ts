@@ -38,6 +38,8 @@ export async function POST(req: NextRequest) {
       return proxyToAgent('screenshot', { sessionId: `${userId}:${rest.board}` });
     case 'click':
       return proxyToAgent('click', { sessionId: `${userId}:${rest.board}`, x: rest.x, y: rest.y });
+    case 'navigate':
+      return proxyToAgent('navigate', { sessionId: `${userId}:${rest.board}`, url: rest.url });
     case 'type':
       return proxyToAgent('type', { sessionId: `${userId}:${rest.board}`, text: rest.text });
     case 'keypress':

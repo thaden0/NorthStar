@@ -651,20 +651,34 @@ export class JobApplyService {
           selector: getSelector(el),
         }));
 
+      // Buttons that look like submit but actually exit or go back
+      const exitKeywords = ['save and close', 'save & close', 'cancel', 'back', 'discard', 'exit', 'close window', 'not now', 'no thanks', 'maybe later'];
+
       const submitButtons = allButtons
         .filter(el => {
           if (!isInteractiveButton(el)) return false;
           const text = (el.textContent?.trim() || '').toLowerCase();
           const type = (el as HTMLInputElement).type?.toLowerCase();
+          // Exclude exit/dismiss buttons
+          if (exitKeywords.some(k => text.includes(k))) return false;
+          if (text === 'close' || text === 'back') return false;
           const isSubmit = submitKeywords.some(k => text.includes(k)) || type === 'submit';
           const isApply = applyKeywords.some(k => text.includes(k));
           return isSubmit && !isApply;
         })
-        .slice(0, 3)
+        .slice(0, 5)
         .map(el => ({
           text: (el.textContent?.trim() || '').substring(0, 80),
           selector: getSelector(el),
-        }));
+        }))
+        // Prioritize 'continue' and 'next' over generic submit buttons
+        .sort((a, b) => {
+          const priority = ['continue', 'next', 'submit', 'review'];
+          const aIdx = priority.findIndex(k => a.text.toLowerCase().includes(k));
+          const bIdx = priority.findIndex(k => b.text.toLowerCase().includes(k));
+          return (aIdx === -1 ? 99 : aIdx) - (bIdx === -1 ? 99 : bIdx);
+        })
+        .slice(0, 3);
 
       // Find form fields
       const inputs = Array.from(document.querySelectorAll('input, textarea, select'));

@@ -238,6 +238,20 @@ export class LoginSessionService {
   }
 
   /**
+   * Navigate to a specific URL within the session.
+   */
+  async navigate(sessionId: string, url: string): Promise<void> {
+    const session = this.activeSessions.get(sessionId);
+    if (!session?.page) throw new Error('No active session');
+
+    const activePage = this.getActivePage(session);
+    if (!activePage || activePage.isClosed()) throw new Error('No active page');
+
+    await activePage.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    await activePage.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+  }
+
+  /**
    * Send a click at specific coordinates.
    */
   async click(sessionId: string, x: number, y: number): Promise<void> {
