@@ -248,25 +248,36 @@ export async function scrapeForSearch(searchId: string): Promise<{ added: number
   const errors: string[] = [];
   let allScrapedJobs: ScrapedJob[] = [];
   
-  // Scrape from each configured source
+  // Build combinations of locations and job types
+  const locations = search.locations.length > 0 ? search.locations : [null];
+  const jobTypes = search.jobTypes.length > 0 ? search.jobTypes : ['fulltime'];
+  
+  // Scrape from each configured source × location × jobType
   for (const source of search.sources) {
-    try {
-      let scrapeResults: ScrapedJob[] = [];
-      
-      if (source === 'indeed') {
-        scrapeResults = await scrapeIndeed(search.keywords, search.location, search.jobType);
-      } else if (source === 'linkedin') {
-        scrapeResults = await scrapeLinkedIn(search.keywords, search.location, search.jobType);
+    for (const location of locations) {
+      for (const jobType of jobTypes) {
+        try {
+          let scrapeResults: ScrapedJob[] = [];
+          
+          if (source === 'indeed') {
+            scrapeResults = await scrapeIndeed(search.keywords, location, jobType);
+          } else if (source === 'linkedin') {
+            scrapeResults = await scrapeLinkedIn(search.keywords, location, jobType);
+          }
+          
+          allScrapedJobs = allScrapedJobs.concat(scrapeResults);
+        } catch (error) {
+          const msg = `Error scraping ${source} (${location || 'any'}, ${jobType}): ${error instanceof Error ? error.message : String(error)}`;
+          errors.push(msg);
+          console.error(msg);
+        }
+        
+        // Rate limit between requests
+        await new Promise(resolve => setTimeout(resolve, 1500));
       }
-      
-      allScrapedJobs = allScrapedJobs.concat(scrapeResults);
-    } catch (error) {
-      const msg = `Error scraping ${source}: ${error instanceof Error ? error.message : String(error)}`;
-      errors.push(msg);
-      console.error(msg);
     }
     
-    // Rate limit between sources
+    // Extra delay between sources
     await new Promise(resolve => setTimeout(resolve, 2000));
   }
   

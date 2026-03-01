@@ -13,13 +13,13 @@ interface JobSearch {
   id: string;
   name: string;
   keywords: string[];
-  location: string | null;
+  locations: string[];
   remote: string;
   salaryMin: number | null;
   salaryMax: number | null;
   salaryPeriod: string;
   experienceLevel: string | null;
-  jobType: string;
+  jobTypes: string[];
   industry: string | null;
   companySize: string | null;
   excludeKeywords: string[];
@@ -75,13 +75,13 @@ export default function SearchesTab({ onUpdate }: SearchesTabProps) {
   const [formData, setFormData] = useState({
     name: '',
     keywords: '',
-    location: '',
+    locations: '',
     remote: 'any',
     salaryMin: '',
     salaryMax: '',
     salaryPeriod: 'yearly',
     experienceLevel: '',
-    jobType: 'fulltime',
+    jobTypes: ['fulltime'] as string[],
     industry: '',
     companySize: '',
     excludeKeywords: '',
@@ -110,13 +110,13 @@ export default function SearchesTab({ onUpdate }: SearchesTabProps) {
     setFormData({
       name: '',
       keywords: '',
-      location: '',
+      locations: '',
       remote: 'any',
       salaryMin: '',
       salaryMax: '',
       salaryPeriod: 'yearly',
       experienceLevel: '',
-      jobType: 'fulltime',
+      jobTypes: ['fulltime'],
       industry: '',
       companySize: '',
       excludeKeywords: '',
@@ -130,13 +130,13 @@ export default function SearchesTab({ onUpdate }: SearchesTabProps) {
     setFormData({
       name: search.name,
       keywords: search.keywords.join(', '),
-      location: search.location || '',
+      locations: search.locations.join(', '),
       remote: search.remote,
       salaryMin: search.salaryMin?.toString() || '',
       salaryMax: search.salaryMax?.toString() || '',
       salaryPeriod: search.salaryPeriod,
       experienceLevel: search.experienceLevel || '',
-      jobType: search.jobType,
+      jobTypes: search.jobTypes.length > 0 ? search.jobTypes : ['fulltime'],
       industry: search.industry || '',
       companySize: search.companySize || '',
       excludeKeywords: search.excludeKeywords.join(', '),
@@ -153,13 +153,13 @@ export default function SearchesTab({ onUpdate }: SearchesTabProps) {
     const payload = {
       name: formData.name,
       keywords: formData.keywords.split(',').map(k => k.trim()).filter(Boolean),
-      location: formData.location || null,
+      locations: formData.locations.split(',').map(l => l.trim()).filter(Boolean),
       remote: formData.remote,
       salaryMin: formData.salaryMin || null,
       salaryMax: formData.salaryMax || null,
       salaryPeriod: formData.salaryPeriod,
       experienceLevel: formData.experienceLevel || null,
-      jobType: formData.jobType,
+      jobTypes: formData.jobTypes,
       industry: formData.industry || null,
       companySize: formData.companySize || null,
       excludeKeywords: formData.excludeKeywords.split(',').map(k => k.trim()).filter(Boolean),
@@ -224,6 +224,18 @@ export default function SearchesTab({ onUpdate }: SearchesTabProps) {
         ? prev.sources.filter(s => s !== source)
         : [...prev.sources, source],
     }));
+  };
+
+  const toggleJobType = (type: string) => {
+    setFormData(prev => {
+      const current = prev.jobTypes;
+      if (current.includes(type)) {
+        // Don't allow removing the last one
+        if (current.length === 1) return prev;
+        return { ...prev, jobTypes: current.filter(t => t !== type) };
+      }
+      return { ...prev, jobTypes: [...current, type] };
+    });
   };
 
   const formatDate = (dateStr: string | null) => {
@@ -298,15 +310,18 @@ export default function SearchesTab({ onUpdate }: SearchesTabProps) {
                   />
                 </div>
 
-                <div className={styles.formGroup}>
-                  <label className={styles.formLabel}><FiMapPin /> Location</label>
+                <div className={`${styles.formGroup} ${styles.fullWidth}`}>
+                  <label className={styles.formLabel}><FiMapPin /> Locations (comma separated)</label>
                   <input
                     className={styles.formInput}
                     type="text"
-                    value={formData.location}
-                    onChange={e => setFormData(prev => ({ ...prev, location: e.target.value }))}
-                    placeholder="Toronto, ON or Remote"
+                    value={formData.locations}
+                    onChange={e => setFormData(prev => ({ ...prev, locations: e.target.value }))}
+                    placeholder="e.g., Toronto ON, New York NY, Remote, San Francisco CA"
                   />
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    Add multiple locations separated by commas. Leave empty to search all locations.
+                  </span>
                 </div>
 
                 <div className={styles.formGroup}>
@@ -323,16 +338,20 @@ export default function SearchesTab({ onUpdate }: SearchesTabProps) {
                 </div>
 
                 <div className={styles.formGroup}>
-                  <label className={styles.formLabel}>Job Type</label>
-                  <select
-                    className={styles.formSelect}
-                    value={formData.jobType}
-                    onChange={e => setFormData(prev => ({ ...prev, jobType: e.target.value }))}
-                  >
+                  <label className={styles.formLabel}>Job Types (select multiple)</label>
+                  <div className={styles.sourceToggles}>
                     {JOB_TYPE_OPTIONS.map(opt => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      <button
+                        key={opt.value}
+                        type="button"
+                        className={`${styles.sourceToggle} ${formData.jobTypes.includes(opt.value) ? styles.sourceActive : ''}`}
+                        onClick={() => toggleJobType(opt.value)}
+                      >
+                        {formData.jobTypes.includes(opt.value) ? <FiCheck /> : <FiX />}
+                        <span>{opt.label}</span>
+                      </button>
                     ))}
-                  </select>
+                  </div>
                 </div>
 
                 <div className={styles.formGroup}>
@@ -459,9 +478,9 @@ export default function SearchesTab({ onUpdate }: SearchesTabProps) {
                     <span className={styles.searchMetaItem}>
                       <FiTag /> {search.keywords.join(', ')}
                     </span>
-                    {search.location && (
+                    {search.locations.length > 0 && (
                       <span className={styles.searchMetaItem}>
-                        <FiMapPin /> {search.location}
+                        <FiMapPin /> {search.locations.join(' · ')}
                       </span>
                     )}
                     <span className={styles.searchMetaItem}>
@@ -509,8 +528,16 @@ export default function SearchesTab({ onUpdate }: SearchesTabProps) {
                         <span className={styles.detailValue}>{REMOTE_OPTIONS.find(o => o.value === search.remote)?.label}</span>
                       </div>
                       <div className={styles.detailItem}>
-                        <span className={styles.detailLabel}>Job Type</span>
-                        <span className={styles.detailValue}>{JOB_TYPE_OPTIONS.find(o => o.value === search.jobType)?.label}</span>
+                        <span className={styles.detailLabel}>Job Types</span>
+                        <span className={styles.detailValue}>
+                          {search.jobTypes.map(t => JOB_TYPE_OPTIONS.find(o => o.value === t)?.label || t).join(', ')}
+                        </span>
+                      </div>
+                      <div className={styles.detailItem}>
+                        <span className={styles.detailLabel}>Locations</span>
+                        <span className={styles.detailValue}>
+                          {search.locations.length > 0 ? search.locations.join(', ') : 'Any'}
+                        </span>
                       </div>
                       <div className={styles.detailItem}>
                         <span className={styles.detailLabel}>Experience</span>

@@ -649,13 +649,13 @@ model JobSearch {
   userId          String
   name            String    // Friendly name for this search (e.g., "Senior React Remote")
   keywords        String[]  // Search keywords (e.g., ["React", "TypeScript", "Senior"])
-  location        String?   // Location filter (e.g., "Toronto, ON" or "Remote")
+  locations       String[]  // Location filters (e.g., ["Toronto, ON", "Remote", "New York, NY"])
   remote          String    @default("any")  // 'any', 'remote', 'hybrid', 'onsite'
   salaryMin       Int?      // Minimum salary
   salaryMax       Int?      // Maximum salary
   salaryPeriod    String    @default("yearly")  // 'yearly', 'monthly', 'hourly'
   experienceLevel String?   // 'entry', 'mid', 'senior', 'lead', 'executive'
-  jobType         String    @default("fulltime") // 'fulltime', 'parttime', 'contract', 'internship'
+  jobTypes        String[]  @default(["fulltime"]) // 'fulltime', 'parttime', 'contract', 'internship'
   industry        String?   // Industry filter
   companySize     String?   // 'startup', 'small', 'medium', 'large', 'enterprise'
   excludeKeywords String[]  // Keywords to exclude from results

@@ -32,8 +32,8 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, keywords, location, remote, salaryMin, salaryMax, salaryPeriod,
-            experienceLevel, jobType, industry, companySize, excludeKeywords, sources } = body;
+    const { name, keywords, locations, remote, salaryMin, salaryMax, salaryPeriod,
+            experienceLevel, jobTypes, industry, companySize, excludeKeywords, sources } = body;
 
     if (!name || !keywords || keywords.length === 0) {
       return NextResponse.json({ error: 'Name and at least one keyword are required' }, { status: 400 });
@@ -44,13 +44,13 @@ export async function POST(request: NextRequest) {
         userId: session.userId,
         name,
         keywords: keywords || [],
-        location: location || null,
+        locations: locations || [],
         remote: remote || 'any',
         salaryMin: salaryMin ? parseInt(salaryMin) : null,
         salaryMax: salaryMax ? parseInt(salaryMax) : null,
         salaryPeriod: salaryPeriod || 'yearly',
         experienceLevel: experienceLevel || null,
-        jobType: jobType || 'fulltime',
+        jobTypes: jobTypes || ['fulltime'],
         industry: industry || null,
         companySize: companySize || null,
         excludeKeywords: excludeKeywords || [],
