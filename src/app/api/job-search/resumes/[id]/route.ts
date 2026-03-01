@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
-import { unlink } from 'fs/promises';
-import { join } from 'path';
 
 export async function PUT(
   request: NextRequest,
@@ -44,6 +42,24 @@ export async function PUT(
         isDefault: body.isDefault !== undefined ? body.isDefault : existing.isDefault,
         isActive: body.isActive !== undefined ? body.isActive : existing.isActive,
       },
+      select: {
+        id: true,
+        userId: true,
+        name: true,
+        fileName: true,
+        fileUrl: true,
+        fileSize: true,
+        fileType: true,
+        targetRole: true,
+        targetIndustry: true,
+        skills: true,
+        experienceYears: true,
+        summary: true,
+        isDefault: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
 
     return NextResponse.json(updated);
@@ -70,14 +86,6 @@ export async function DELETE(
     });
     if (!existing) {
       return NextResponse.json({ error: 'Resume not found' }, { status: 404 });
-    }
-
-    // Delete file from disk
-    try {
-      const filePath = join(process.cwd(), 'public', existing.fileUrl);
-      await unlink(filePath);
-    } catch {
-      // File may not exist, continue
     }
 
     await db.resume.delete({ where: { id } });

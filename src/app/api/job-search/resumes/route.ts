@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
-import { writeFile, mkdir } from 'fs/promises';
-import { join } from 'path';
 
 export async function GET() {
   try {
@@ -14,6 +12,24 @@ export async function GET() {
     const resumes = await db.resume.findMany({
       where: { userId: session.userId },
       orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        userId: true,
+        name: true,
+        fileName: true,
+        fileUrl: true,
+        fileSize: true,
+        fileType: true,
+        targetRole: true,
+        targetIndustry: true,
+        skills: true,
+        experienceYears: true,
+        summary: true,
+        isDefault: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
 
     return NextResponse.json(resumes);
@@ -50,18 +66,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Only PDF and Word documents are supported' }, { status: 400 });
     }
 
-    // Save file
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      return NextResponse.json({ error: 'File size must be less than 10MB' }, { status: 400 });
+    }
+
+    // Convert file to base64 for database storage
     const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-    
-    const uploadsDir = join(process.cwd(), 'public', 'uploads', 'resumes');
-    await mkdir(uploadsDir, { recursive: true });
-    
-    const uniqueName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-    const filePath = join(uploadsDir, uniqueName);
-    await writeFile(filePath, buffer);
-    
-    const fileUrl = `/uploads/resumes/${uniqueName}`;
+    const base64Data = Buffer.from(bytes).toString('base64');
 
     // If setting as default, unset others
     if (isDefault) {
@@ -76,15 +88,34 @@ export async function POST(request: NextRequest) {
         userId: session.userId,
         name,
         fileName: file.name,
-        fileUrl,
+        fileUrl: `/api/job-search/resumes/download`,
         fileSize: file.size,
         fileType: file.type,
+        fileData: base64Data,
         targetRole: targetRole || null,
         targetIndustry: targetIndustry || null,
         skills: skills ? skills.split(',').map(s => s.trim()).filter(Boolean) : [],
         experienceYears: experienceYears ? parseInt(experienceYears) : null,
         summary: summary || null,
         isDefault,
+      },
+      select: {
+        id: true,
+        userId: true,
+        name: true,
+        fileName: true,
+        fileUrl: true,
+        fileSize: true,
+        fileType: true,
+        targetRole: true,
+        targetIndustry: true,
+        skills: true,
+        experienceYears: true,
+        summary: true,
+        isDefault: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
       },
     });
 

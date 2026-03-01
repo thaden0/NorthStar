@@ -417,7 +417,7 @@ export default function ResumesTab({ onUpdate }: ResumesTabProps) {
 
               <div className={styles.resumeActions}>
                 <a
-                  href={resume.fileUrl}
+                  href={`/api/job-search/resumes/download?id=${resume.id}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className={styles.resumeActionBtn}

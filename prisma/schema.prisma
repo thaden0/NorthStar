@@ -681,6 +681,7 @@ model Resume {
   fileUrl         String    // URL/path to stored file
   fileSize        Int       // File size in bytes
   fileType        String    // MIME type (application/pdf, etc.)
+  fileData        String?   @db.Text  // Base64-encoded file content
   
   // Metadata for AI matching
   targetRole      String?   // Target role this resume is optimized for
