@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FiSearch, FiFileText, FiBriefcase, FiRefreshCw,
-  FiTrendingUp, FiZap
+  FiTrendingUp, FiZap, FiCpu
 } from 'react-icons/fi';
 import SearchesTab from './SearchesTab';
 import ResumesTab from './ResumesTab';
@@ -22,6 +22,7 @@ interface StatusCounts {
 export default function JobSearchPage() {
   const [activeTab, setActiveTab] = useState<TabType>('searches');
   const [isScraping, setIsScraping] = useState(false);
+  const [isScoring, setIsScoring] = useState(false);
   const [scrapeResult, setScrapeResult] = useState<string | null>(null);
   const [jobCounts, setJobCounts] = useState<StatusCounts>({});
   const [totalJobs, setTotalJobs] = useState(0);
@@ -97,6 +98,29 @@ export default function JobSearchPage() {
     }
   };
 
+  const handleScore = async () => {
+    setIsScoring(true);
+    setScrapeResult(null);
+    try {
+      const res = await fetch('/api/job-search/jobs/score', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setScrapeResult(data.scored > 0 ? `AI scored ${data.scored} jobs` : 'All jobs already scored');
+      } else {
+        setScrapeResult(data.error || 'Scoring failed');
+      }
+    } catch {
+      setScrapeResult('Network error during scoring');
+    } finally {
+      setIsScoring(false);
+      setTimeout(() => setScrapeResult(null), 8000);
+    }
+  };
+
   const tabs: { id: TabType; label: string; icon: React.ReactNode; count: number }[] = [
     { id: 'searches', label: 'Job Searches', icon: <FiSearch />, count: searchCount },
     { id: 'resumes', label: 'Resumes', icon: <FiFileText />, count: resumeCount },
@@ -147,10 +171,19 @@ export default function JobSearchPage() {
           <button
             className={`${styles.scrapeButton} ${isScraping ? styles.scraping : ''}`}
             onClick={handleScrape}
-            disabled={isScraping}
+            disabled={isScraping || isScoring}
           >
             <FiRefreshCw className={isScraping ? styles.spinIcon : ''} />
             {isScraping ? 'Scraping...' : 'Refresh Jobs'}
+          </button>
+          <button
+            className={`${styles.scrapeButton} ${isScoring ? styles.scraping : ''}`}
+            onClick={handleScore}
+            disabled={isScraping || isScoring}
+            style={{ background: 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)' }}
+          >
+            <FiCpu className={isScoring ? styles.spinIcon : ''} />
+            {isScoring ? 'Scoring...' : 'Score Jobs'}
           </button>
         </div>
       </div>
