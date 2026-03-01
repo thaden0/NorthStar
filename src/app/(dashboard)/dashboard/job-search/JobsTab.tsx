@@ -39,7 +39,8 @@ interface Job {
   createdAt: string;
   jobSearch: { name: string } | null;
   resume: { name: string } | null;
-  coverLetter?: { id: string; content: string; version: number } | null;
+  coverLetter?: { id: string } | null;
+  jobApplication?: { id: string; status: string } | null;
 }
 
 interface JobsTabProps {
@@ -131,6 +132,17 @@ export default function JobsTab({ onUpdate }: JobsTabProps) {
         setTotal(data.total);
         setTotalPages(data.totalPages);
         setStatusCounts(data.statusCounts || {});
+        // Populate cover letter indicators from API data
+        const clSet = new Set<string>(
+          data.jobs
+            .filter((j: Job) => j.coverLetter?.id)
+            .map((j: Job) => j.id)
+        );
+        setJobsWithCoverLetters(prev => {
+          const merged = new Set(prev);
+          clSet.forEach(id => merged.add(id));
+          return merged;
+        });
       }
     } catch {
       console.error('Failed to fetch jobs');

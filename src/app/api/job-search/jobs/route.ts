@@ -45,6 +45,8 @@ export async function GET(request: NextRequest) {
         include: {
           jobSearch: { select: { name: true } },
           resume: { select: { name: true } },
+          coverLetter: { select: { id: true } },
+          jobApplication: { select: { id: true, status: true } },
         },
       }),
       db.job.count({ where }),
