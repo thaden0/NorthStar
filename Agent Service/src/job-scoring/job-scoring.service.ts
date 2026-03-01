@@ -9,7 +9,7 @@ export class JobScoringService {
   constructor(private readonly ollamaService: OllamaService) {}
 
   async scoreJobs(dto: JobScoringRequestDto): Promise<JobScoreResult[]> {
-    const model = dto.model || 'qwen3:latest';
+    const model = dto.model || 'phi4:latest';
     const results: JobScoreResult[] = [];
 
     // Build context about the search and candidate
@@ -137,9 +137,39 @@ Respond with ONLY the JSON scores object. No markdown, no explanation, just the 
       }
 
       // Try to extract JSON from the response
-      const jsonMatch = content.match(/\{[\s\S]*"scores"[\s\S]*\}/);
-      if (!jsonMatch) {
-        this.logger.warn(`Failed to extract JSON from response: ${content.substring(0, 200)}`);
+      // Handle both {scores: [...]} and bare [...] formats
+      let scores: Array<{
+        jobId: string;
+        searchMatchScore: number;
+        candidateMatchScore: number;
+        notes: string;
+      }> = [];
+
+      // Try wrapped format first: {"scores": [...]}
+      const wrappedMatch = content.match(/\{[\s\S]*"scores"[\s\S]*\}/);
+      if (wrappedMatch) {
+        try {
+          const parsed = JSON.parse(wrappedMatch[0]);
+          scores = parsed.scores || [];
+        } catch {
+          // Fall through to array parsing
+        }
+      }
+      
+      // Try bare array format: [{...}, {...}]
+      if (scores.length === 0) {
+        const arrayMatch = content.match(/\[[\s\S]*\]/);
+        if (arrayMatch) {
+          try {
+            scores = JSON.parse(arrayMatch[0]);
+          } catch {
+            // Fall through to default
+          }
+        }
+      }
+
+      if (scores.length === 0) {
+        this.logger.warn(`Failed to extract scores from response: ${content.substring(0, 200)}`);
         return jobs.map(job => ({
           jobId: job.id,
           searchMatchScore: 50,
@@ -148,18 +178,9 @@ Respond with ONLY the JSON scores object. No markdown, no explanation, just the 
         }));
       }
 
-      const parsed = JSON.parse(jsonMatch[0]) as {
-        scores: Array<{
-          jobId: string;
-          searchMatchScore: number;
-          candidateMatchScore: number;
-          notes: string;
-        }>;
-      };
-
       // Map parsed results back to jobs, ensuring all jobs get a score
       return jobs.map(job => {
-        const score = parsed.scores.find(s => s.jobId === job.id);
+        const score = scores.find(s => s.jobId === job.id);
         if (score) {
           return {
             jobId: job.id,
@@ -168,7 +189,6 @@ Respond with ONLY the JSON scores object. No markdown, no explanation, just the 
             notes: score.notes || '',
           };
         }
-        // If this job wasn't in the response, assign default scores
         return {
           jobId: job.id,
           searchMatchScore: 50,
