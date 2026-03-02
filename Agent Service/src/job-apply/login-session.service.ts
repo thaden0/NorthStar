@@ -123,6 +123,9 @@ export class LoginSessionService {
     this.activeSessions.set(sessionId, session);
 
     try {
+      // Clean up stale lock files from crashed processes
+      this.cleanProfileLocks(profilePath);
+
       // Launch persistent context with user data dir
       const context = await chromium.launchPersistentContext(profilePath, {
         headless: true,
@@ -367,6 +370,10 @@ export class LoginSessionService {
     }
 
     const profilePath = this.getProfilePath(userId, board);
+
+    // Clean up stale lock files from crashed processes
+    this.cleanProfileLocks(profilePath);
+
     try {
       const context = await chromium.launchPersistentContext(profilePath, {
         headless: true,
@@ -385,6 +392,22 @@ export class LoginSessionService {
     } catch (error) {
       this.logger.error(`Failed to get apply context: ${error}`);
       return null;
+    }
+  }
+
+  /**
+   * Remove stale Chromium lock files from a profile directory.
+   */
+  private cleanProfileLocks(profilePath: string): void {
+    const lockFiles = ['SingletonLock', 'SingletonCookie', 'SingletonSocket'];
+    for (const lockFile of lockFiles) {
+      const lockPath = path.join(profilePath, lockFile);
+      try {
+        if (fs.existsSync(lockPath)) {
+          fs.unlinkSync(lockPath);
+          this.logger.log(`Removed stale lock file: ${lockPath}`);
+        }
+      } catch { /* ignore */ }
     }
   }
 
