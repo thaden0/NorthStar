@@ -1327,102 +1327,163 @@ Respond with ONLY the JSON array, no explanation. /no_think`;
   }
 
   /**
-   * Try to find and solve a CAPTCHA on the page (reCAPTCHA "I'm not a robot", hCaptcha, Turnstile).
-   * Returns true if a CAPTCHA was found and clicked.
+   * Try to find and solve a reCAPTCHA on the page using the audio challenge approach.
+   * Based on danielgatis/puppeteer-recaptcha-solver, ported to Playwright.
+   * Flow: click checkbox → if image challenge → switch to audio → transcribe → verify
    */
   private async trySolveCaptcha(page: Page): Promise<boolean> {
     try {
-      // Log all iframes on page for debugging
+      // Log all iframes for debugging
       const iframeInfo = await page.evaluate(() => {
         return Array.from(document.querySelectorAll('iframe')).map(f => ({
           src: (f.src || '').substring(0, 150),
           title: f.title || '',
-          id: f.id || '',
         }));
       });
       this.logger.log(`[CAPTCHA] Page has ${iframeInfo.length} iframes: ${JSON.stringify(iframeInfo)}`);
 
-      // Strategy 1: reCAPTCHA v2/Enterprise "I'm not a robot" checkbox (in iframe)
-      // Target only "anchor" iframes (not bframe/challenge iframes)
-      const recaptchaSelectors = [
-        'iframe[src*="recaptcha"][src*="anchor"]',
-        'iframe[title="reCAPTCHA"]',
-        'iframe[src*="recaptcha.net"]',
-        'iframe[src*="google.com/recaptcha"]',
-      ];
-      for (const iframeSel of recaptchaSelectors) {
-        try {
-          const frames = page.locator(iframeSel);
-          const count = await frames.count();
-          this.logger.log(`[CAPTCHA] Selector "${iframeSel}" matched ${count} iframes`);
-          
-          for (let i = 0; i < count; i++) {
-            try {
-              const frameLoc = page.frameLocator(`${iframeSel} >> nth=${i}`);
-              // Try multiple selectors for the checkbox inside the frame
-              const checkboxSelectors = [
-                '[role="checkbox"]',
-                '#recaptcha-anchor',
-                '.recaptcha-checkbox-border',
-                '.recaptcha-checkbox',
-                '.rc-anchor-center-item',
-                'span[role="checkbox"]',
-              ];
-              for (const cbSel of checkboxSelectors) {
-                const cb = frameLoc.locator(cbSel);
-                if (await cb.first().isVisible({ timeout: 1500 }).catch(() => false)) {
-                  this.logger.log(`[CAPTCHA] Found checkbox with "${cbSel}" in iframe #${i} (${iframeSel}), clicking...`);
-                  await cb.first().click({ timeout: 5000 });
-                  this.logger.log('[CAPTCHA] Clicked reCAPTCHA checkbox successfully!');
-                  await this.sleep(4000);
-                  return true;
-                }
-              }
-            } catch (e) {
-              this.logger.warn(`[CAPTCHA] Error checking iframe #${i}: ${e}`);
-            }
+      // Step 1: Find the anchor iframe (checkbox) — supports both standard and Enterprise reCAPTCHA
+      const anchorFrame = page.frames().find(f =>
+        f.url().includes('api2/anchor') || f.url().includes('enterprise/anchor')
+      );
+
+      if (!anchorFrame) {
+        this.logger.log('[CAPTCHA] No reCAPTCHA anchor iframe found');
+        return false;
+      }
+
+      this.logger.log(`[CAPTCHA] Found anchor frame: ${anchorFrame.url().substring(0, 100)}`);
+
+      // Step 2: Click the checkbox
+      const checkbox = anchorFrame.locator('#recaptcha-anchor');
+      if (await checkbox.isVisible({ timeout: 3000 }).catch(() => false)) {
+        // Add random delay to seem human
+        await this.sleep(Math.floor(Math.random() * 200) + 100);
+        await checkbox.click({ delay: Math.floor(Math.random() * 120) + 30 });
+        this.logger.log('[CAPTCHA] Clicked reCAPTCHA checkbox');
+        await this.sleep(3000);
+      } else {
+        this.logger.log('[CAPTCHA] Checkbox not visible in anchor frame');
+        return false;
+      }
+
+      // Step 3: Check if checkbox is already checked (solved without challenge)
+      const isChecked = await anchorFrame.locator('#recaptcha-anchor[aria-checked="true"]')
+        .isVisible({ timeout: 2000 }).catch(() => false);
+      if (isChecked) {
+        this.logger.log('[CAPTCHA] Checkbox passed without challenge!');
+        return true;
+      }
+
+      // Step 4: Image challenge appeared — find the bframe and switch to audio
+      this.logger.log('[CAPTCHA] Image challenge detected, switching to audio...');
+      const bframe = page.frames().find(f =>
+        f.url().includes('api2/bframe') || f.url().includes('enterprise/bframe')
+      );
+
+      if (!bframe) {
+        this.logger.log('[CAPTCHA] No bframe found for challenge');
+        return false;
+      }
+
+      // Click the audio button
+      const audioButton = bframe.locator('#recaptcha-audio-button');
+      if (await audioButton.isVisible({ timeout: 3000 }).catch(() => false)) {
+        await audioButton.click({ delay: Math.floor(Math.random() * 120) + 30 });
+        this.logger.log('[CAPTCHA] Clicked audio challenge button');
+        await this.sleep(3000);
+      } else {
+        this.logger.log('[CAPTCHA] Audio button not found in bframe');
+        return false;
+      }
+
+      // Step 5: Solve the audio challenge (up to 3 attempts)
+      for (let attempt = 0; attempt < 3; attempt++) {
+        this.logger.log(`[CAPTCHA] Audio solve attempt ${attempt + 1}/3`);
+
+        // Wait for audio download link
+        const downloadLink = bframe.locator('.rc-audiochallenge-tdownload-link');
+        if (!await downloadLink.isVisible({ timeout: 5000 }).catch(() => false)) {
+          this.logger.warn('[CAPTCHA] Audio download link not visible');
+          // Check if we got "Try again later" error
+          const errorMsg = await bframe.locator('.rc-audiochallenge-error-message')
+            .textContent({ timeout: 1000 }).catch(() => '');
+          if (errorMsg) {
+            this.logger.warn(`[CAPTCHA] Audio challenge error: ${errorMsg}`);
+            return false; // Can't continue — blocked
           }
-        } catch (e) {
-          this.logger.warn(`[CAPTCHA] reCAPTCHA attempt with ${iframeSel} failed: ${e}`);
+          continue;
+        }
+
+        // Get the audio source URL
+        const audioSrc = await bframe.locator('#audio-source')
+          .getAttribute('src', { timeout: 3000 }).catch(() => null);
+        if (!audioSrc) {
+          this.logger.warn('[CAPTCHA] Could not get audio source URL');
+          continue;
+        }
+        this.logger.log(`[CAPTCHA] Audio source: ${audioSrc.substring(0, 80)}...`);
+
+        // Download the audio and send to wit.ai for transcription
+        try {
+          const audioResponse = await fetch(audioSrc);
+          const audioBuffer = await audioResponse.arrayBuffer();
+
+          const witResponse = await fetch('https://api.wit.ai/speech?v=20220622', {
+            method: 'POST',
+            body: new Uint8Array(audioBuffer),
+            headers: {
+              'Authorization': 'Bearer JVHWCNWJLWLGN6MFALYLHAPKUFHMNTAC',
+              'Content-Type': 'audio/mpeg3',
+            },
+          });
+          const witText = await witResponse.text();
+          this.logger.log(`[CAPTCHA] wit.ai response: ${witText.substring(0, 200)}`);
+
+          // Extract the transcript
+          const match = witText.match(/"text":\s*"(.+?)"/);
+          if (!match || !match[1]) {
+            this.logger.warn('[CAPTCHA] Could not parse transcript, reloading...');
+            const reloadBtn = bframe.locator('#recaptcha-reload-button');
+            if (await reloadBtn.isVisible({ timeout: 1000 }).catch(() => false)) {
+              await reloadBtn.click({ delay: Math.floor(Math.random() * 120) + 30 });
+              await this.sleep(3000);
+            }
+            continue;
+          }
+
+          const transcript = match[1].trim();
+          this.logger.log(`[CAPTCHA] Transcript: "${transcript}"`);
+
+          // Type the answer
+          const audioInput = bframe.locator('#audio-response');
+          await audioInput.click({ delay: Math.floor(Math.random() * 120) + 30 });
+          await audioInput.fill(''); // Clear first
+          // Type with random delays to seem human
+          for (const char of transcript) {
+            await audioInput.type(char, { delay: Math.floor(Math.random() * 45) + 30 });
+          }
+
+          // Click verify
+          const verifyBtn = bframe.locator('#recaptcha-verify-button');
+          await verifyBtn.click({ delay: Math.floor(Math.random() * 120) + 30 });
+          await this.sleep(3000);
+
+          // Check if solved
+          const solved = await anchorFrame.locator('#recaptcha-anchor[aria-checked="true"]')
+            .isVisible({ timeout: 5000 }).catch(() => false);
+          if (solved) {
+            this.logger.log('[CAPTCHA] ✅ reCAPTCHA solved successfully via audio!');
+            return true;
+          }
+
+          this.logger.warn('[CAPTCHA] Verify did not solve, retrying...');
+        } catch (err) {
+          this.logger.warn(`[CAPTCHA] Audio solve error: ${err}`);
         }
       }
 
-      // Strategy 2: Click the reCAPTCHA container div directly (sometimes works)
-      try {
-        const recaptchaDiv = page.locator('.g-recaptcha, [data-sitekey]');
-        if (await recaptchaDiv.first().isVisible({ timeout: 1000 }).catch(() => false)) {
-          this.logger.log('[CAPTCHA] Found .g-recaptcha div on page, clicking...');
-          await recaptchaDiv.first().click({ timeout: 5000 });
-          await this.sleep(4000);
-          return true;
-        }
-      } catch { /* not found */ }
-
-      // Strategy 3: hCaptcha
-      try {
-        const frame = page.frameLocator('iframe[src*="hcaptcha"]');
-        const checkbox = frame.locator('#checkbox, .check');
-        if (await checkbox.first().isVisible({ timeout: 2000 }).catch(() => false)) {
-          this.logger.log('[CAPTCHA] Found hCaptcha, clicking...');
-          await checkbox.first().click({ timeout: 5000 });
-          await this.sleep(4000);
-          return true;
-        }
-      } catch { /* not found */ }
-
-      // Strategy 4: Cloudflare Turnstile
-      try {
-        const frame = page.frameLocator('iframe[src*="turnstile"], iframe[src*="challenges.cloudflare"]');
-        const checkbox = frame.locator('input[type="checkbox"], .cb-i, body');
-        if (await checkbox.first().isVisible({ timeout: 2000 }).catch(() => false)) {
-          this.logger.log('[CAPTCHA] Found Turnstile, clicking...');
-          await checkbox.first().click({ timeout: 5000 });
-          await this.sleep(4000);
-          return true;
-        }
-      } catch { /* not found */ }
-
-      this.logger.log('[CAPTCHA] No CAPTCHA elements found on page');
+      this.logger.warn('[CAPTCHA] Failed to solve after 3 attempts');
       return false;
     } catch (error) {
       this.logger.warn(`[CAPTCHA] Solve attempt failed: ${error}`);
