@@ -58,6 +58,8 @@ interface PageAnalysis {
   title: string;
   applyButtons: Array<{ text: string; selector: string }>;
   formFields: Array<{ label: string; type: string; name: string; id: string; required: boolean; value: string }>;
+  radioGroups: Array<{ label: string; name: string; options: Array<{ value: string; text: string; selector: string; checked: boolean }> }>;
+  checkboxFields: Array<{ label: string; selector: string; checked: boolean; name: string }>;
   submitButtons: Array<{ text: string; selector: string }>;
   textContent: string;
   isConfirmationPage: boolean;
@@ -344,8 +346,9 @@ export class JobApplyService {
           continue;
         }
 
-        // If there are form fields (and NO apply button), use LLM to decide what to fill
-        if (analysis.formFields.length > 0) {
+        // If there are form fields, radio groups, or checkboxes — use LLM to decide
+        const hasInteractiveElements = analysis.formFields.length > 0 || analysis.radioGroups.length > 0 || analysis.checkboxFields.length > 0;
+        if (hasInteractiveElements) {
           const actions = await this.decideFormActions(analysis, request);
 
           for (const action of actions) {
@@ -372,6 +375,38 @@ export class JobApplyService {
                     success: false,
                   });
                 }
+              }
+            } else if (action.type === 'radio') {
+              addStep({
+                action: 'filling_field',
+                description: `Selecting "${action.value}" for "${action.label}"`,
+                success: true,
+              });
+              try {
+                await page.click(action.selector);
+                await this.sleep(300);
+              } catch (err) {
+                addStep({
+                  action: 'error',
+                  description: `Failed to select radio "${action.label}": ${err instanceof Error ? err.message : err}`,
+                  success: false,
+                });
+              }
+            } else if (action.type === 'checkbox') {
+              addStep({
+                action: 'filling_field',
+                description: `Checking "${action.label}"`,
+                success: true,
+              });
+              try {
+                await page.click(action.selector);
+                await this.sleep(300);
+              } catch (err) {
+                addStep({
+                  action: 'error',
+                  description: `Failed to check "${action.label}": ${err instanceof Error ? err.message : err}`,
+                  success: false,
+                });
               }
             } else if (action.type === 'select') {
               addStep({
@@ -464,8 +499,8 @@ export class JobApplyService {
           continue;
         }
 
-        // No forms and no apply buttons — but maybe there's a continue/next button (multi-step wizard)
-        if (analysis.applyButtons.length === 0 && analysis.formFields.length === 0) {
+        // No interactive elements and no apply buttons — just a continue/next page
+        if (analysis.applyButtons.length === 0 && !hasInteractiveElements) {
           // Check for submit/continue/next buttons first (Indeed wizard steps like "Add Resume")
           if (analysis.submitButtons.length > 0) {
             const submitBtn = analysis.submitButtons[0];
@@ -680,12 +715,12 @@ export class JobApplyService {
         })
         .slice(0, 3);
 
-      // Find form fields
+      // Find form fields (text inputs, textareas, selects)
       const inputs = Array.from(document.querySelectorAll('input, textarea, select'));
       const formFields = inputs
         .filter(el => {
           const type = (el as HTMLInputElement).type?.toLowerCase();
-          if (['hidden', 'submit', 'button', 'reset', 'search'].includes(type)) return false;
+          if (['hidden', 'submit', 'button', 'reset', 'search', 'radio', 'checkbox'].includes(type)) return false;
           // Must be visible
           const rect = el.getBoundingClientRect();
           if (rect.width < 10 || rect.height < 10) return false;
@@ -725,6 +760,77 @@ export class JobApplyService {
           };
         });
 
+      // Find radio button groups (Indeed questions like "most relevant job")
+      const radioInputs = Array.from(document.querySelectorAll('input[type="radio"]'));
+      const radioGroupMap: Record<string, { label: string; name: string; options: { value: string; text: string; selector: string; checked: boolean }[] }> = {};
+      for (const radio of radioInputs) {
+        const input = radio as HTMLInputElement;
+        if (!input.name) continue;
+        const rect = input.getBoundingClientRect();
+        // Radios can be small (custom styled) — check parent visibility
+        const parentVisible = input.closest('label, div, li');
+        if (parentVisible) {
+          const pRect = parentVisible.getBoundingClientRect();
+          if (pRect.width < 10 || pRect.height < 10) continue;
+        } else if (rect.width < 2 && rect.height < 2) continue;
+
+        if (!radioGroupMap[input.name]) {
+          // Try to find the question/label for this radio group
+          const fieldset = input.closest('fieldset');
+          const legend = fieldset?.querySelector('legend')?.textContent?.trim() || '';
+          const groupLabel = input.closest('[class*="question"], [class*="Question"]');
+          const questionText = legend || groupLabel?.querySelector('label, h3, h4, p, span')?.textContent?.trim() || '';
+          // Also try aria-labelledby
+          const ariaLabelledBy = input.getAttribute('aria-labelledby');
+          const ariaText = ariaLabelledBy ? document.getElementById(ariaLabelledBy)?.textContent?.trim() || '' : '';
+
+          radioGroupMap[input.name] = {
+            label: questionText || ariaText || input.name,
+            name: input.name,
+            options: [],
+          };
+        }
+
+        // Get option text from label
+        const labelEl = input.id ? document.querySelector(`label[for="${input.id}"]`) : null;
+        const parentLabel = input.closest('label');
+        const optionText = labelEl?.textContent?.trim() || parentLabel?.textContent?.trim() || input.value;
+
+        radioGroupMap[input.name].options.push({
+          value: input.value,
+          text: optionText,
+          selector: getSelector(radio),
+          checked: input.checked,
+        });
+      }
+      const radioGroups = Object.values(radioGroupMap).filter(g => g.options.length > 0);
+
+      // Find checkbox questions
+      const checkboxInputs = Array.from(document.querySelectorAll('input[type="checkbox"]'));
+      const checkboxFields = checkboxInputs
+        .filter(el => {
+          const parent = el.closest('nav, header, [role="search"]');
+          if (parent) return false;
+          const pEl = el.closest('label, div, li');
+          if (pEl) {
+            const r = pEl.getBoundingClientRect();
+            if (r.width < 10) return false;
+          }
+          return true;
+        })
+        .slice(0, 10)
+        .map(el => {
+          const input = el as HTMLInputElement;
+          const labelEl = input.id ? document.querySelector(`label[for="${input.id}"]`) : null;
+          const parentLabel = input.closest('label');
+          return {
+            label: labelEl?.textContent?.trim() || parentLabel?.textContent?.trim() || input.name || 'checkbox',
+            selector: getSelector(el),
+            checked: input.checked,
+            name: input.name,
+          };
+        });
+
       // Check for login/account indicators
       const bodyText = document.body.textContent?.toLowerCase() || '';
       const isLoginRequired = bodyText.includes('sign in to apply') ||
@@ -741,7 +847,7 @@ export class JobApplyService {
 
       const textContent = bodyText.substring(0, 3000);
 
-      return { applyButtons, submitButtons, formFields, isLoginRequired, isConfirmationPage, textContent };
+      return { applyButtons, submitButtons, formFields, radioGroups, checkboxFields, isLoginRequired, isConfirmationPage, textContent };
     });
 
     return {
@@ -755,7 +861,7 @@ export class JobApplyService {
     analysis: PageAnalysis,
     request: ApplyRequest,
   ): Promise<Array<{
-    type: 'fill' | 'select' | 'upload' | 'textarea';
+    type: 'fill' | 'select' | 'upload' | 'textarea' | 'radio' | 'checkbox';
     selector: string;
     label: string;
     value: string;
@@ -763,11 +869,37 @@ export class JobApplyService {
   }>> {
     const model = request.model || this.defaultModel;
 
-    const fieldDescriptions = analysis.formFields.map(f =>
-      `- Field: "${f.label}" (type: ${f.type}, selector: ${f.id}, required: ${f.required}, current value: "${f.value}")`
-    ).join('\n');
+    // Build descriptions for all interactive elements
+    const sections: string[] = [];
 
-    const prompt = `You are filling out a job application form. Based on the user's information, decide what to enter in each form field.
+    if (analysis.formFields.length > 0) {
+      const fieldDescriptions = analysis.formFields.map(f =>
+        `- Field: "${f.label}" (type: ${f.type}, selector: ${f.id}, required: ${f.required}, current value: "${f.value}")`
+      ).join('\n');
+      sections.push(`TEXT FIELDS:\n${fieldDescriptions}`);
+    }
+
+    if (analysis.radioGroups.length > 0) {
+      const radioDescriptions = analysis.radioGroups.map(g => {
+        const optionsList = g.options.map(o =>
+          `    - "${o.text}" (value: "${o.value}", selector: ${o.selector}${o.checked ? ', CURRENTLY SELECTED' : ''})`
+        ).join('\n');
+        return `- Question: "${g.label}"\n  Options:\n${optionsList}`;
+      }).join('\n');
+      sections.push(`RADIO QUESTIONS (select ONE option per question):\n${radioDescriptions}`);
+    }
+
+    if (analysis.checkboxFields.length > 0) {
+      const cbDescriptions = analysis.checkboxFields.map(c =>
+        `- "${c.label}" (selector: ${c.selector}, currently ${c.checked ? 'CHECKED' : 'unchecked'})`
+      ).join('\n');
+      sections.push(`CHECKBOXES:\n${cbDescriptions}`);
+    }
+
+    // Include some page context for the LLM to understand the page
+    const pageContext = analysis.textContent.substring(0, 1500);
+
+    const prompt = `You are an AI agent filling out a job application form. Read the page content and decide what to do for each interactive element.
 
 USER INFO:
 - Name: ${request.userInfo.name}
@@ -777,22 +909,30 @@ ${request.resume?.skills?.length ? `- Skills: ${request.resume.skills.join(', ')
 ${request.resume?.experienceYears ? `- Experience: ${request.resume.experienceYears} years` : ''}
 ${request.resume?.summary ? `- Summary: ${request.resume.summary}` : ''}
 
-JOB: ${request.job.title} at ${request.job.company}
+JOB BEING APPLIED TO: ${request.job.title} at ${request.job.company}
 
-FORM FIELDS:
-${fieldDescriptions}
+PAGE CONTEXT:
+${pageContext}
 
-For each field, respond with a JSON array of actions. Each action should have:
-- "selector": the field selector (use the one provided)
-- "label": the field label
-- "type": "fill" for text inputs, "select" for dropdowns, "upload" for file inputs, "textarea" for text areas
-- "value": what to enter
-- "isCoverLetter": true if this appears to be a cover letter field
+${sections.join('\n\n')}
 
-Skip fields that already have values. For file upload fields, set type to "upload" and value to "resume".
-For "cover letter" or "additional information" textareas, set isCoverLetter to true.
-For fields about salary expectations, work authorization, start date — use reasonable defaults.
-For yes/no questions about work authorization, answer "Yes" if reasonable.
+INSTRUCTIONS:
+Respond with a JSON array of actions. Each action should have:
+- "selector": the element selector (use the one provided)
+- "label": the question/field label
+- "type": one of "fill", "select", "upload", "textarea", "radio", "checkbox"
+- "value": what to enter (for radio, use the option text)
+- "isCoverLetter": true ONLY if this is a cover letter/additional info textarea
+
+RULES:
+- For RADIO questions: pick the BEST option based on the user's profile and the job. Use "type": "radio" and set "selector" to the specific option's selector.
+- For CHECKBOXES: only include if they should be checked (e.g., agreement checkboxes). Use "type": "checkbox".
+- Skip fields that already have correct values.
+- For "most relevant job title" questions, pick the one most similar to the job being applied for.
+- For work authorization questions, answer "Yes" / select the affirmative option.
+- For "years of experience" questions, use the user's actual experience.
+- For salary, use a reasonable range based on the role.
+- For file upload fields, set type to "upload" and value to "resume".
 
 Respond with ONLY the JSON array, no explanation. /no_think`;
 

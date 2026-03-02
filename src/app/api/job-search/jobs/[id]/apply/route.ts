@@ -108,9 +108,18 @@ export async function POST(
     // Check if application already exists
     const existing = await db.jobApplication.findUnique({ where: { jobId: id } });
     if (existing && ['in_progress', 'submitted'].includes(existing.status)) {
-      return NextResponse.json({
-        error: existing.status === 'submitted' ? 'Already applied' : 'Application in progress',
-      }, { status: 409 });
+      // Auto-reset stale in_progress applications (stuck for > 5 min)
+      const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
+      if (existing.status === 'in_progress' && existing.startedAt && existing.startedAt < fiveMinAgo) {
+        await db.jobApplication.update({
+          where: { jobId: id },
+          data: { status: 'failed', errorMessage: 'Timed out — auto-reset' },
+        });
+      } else {
+        return NextResponse.json({
+          error: existing.status === 'submitted' ? 'Already applied' : 'Application in progress',
+        }, { status: 409 });
+      }
     }
 
     // Create or reset application record
