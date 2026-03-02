@@ -528,10 +528,33 @@ export class JobApplyService {
               const urlAfter = page.url();
               // Check if page changed or if we see confirmation
               const postClickText = await page.evaluate(() => document.body.textContent?.toLowerCase() || '');
+
+              // Check for "already applied" scenario
+              if (postClickText.includes('already applied') || postClickText.includes('you have already submitted') || postClickText.includes('duplicate application')) {
+                const screenshot = (await page.screenshot()).toString('base64');
+                lastScreenshot = screenshot;
+                addStep({
+                  action: 'complete',
+                  description: 'Already applied to this job previously.',
+                  screenshot,
+                  success: true,
+                });
+                applied = true;
+                break;
+              }
+
               if (postClickText.includes('application submitted') ||
+                  postClickText.includes('your application has been submitted') ||
                   postClickText.includes('thank you for applying') ||
+                  postClickText.includes('thanks for applying') ||
                   postClickText.includes('application received') ||
-                  postClickText.includes('you have successfully applied')) {
+                  postClickText.includes('you have successfully applied') ||
+                  postClickText.includes('application complete') ||
+                  postClickText.includes('application sent') ||
+                  postClickText.includes('your application was sent') ||
+                  urlAfter.includes('post-apply') ||
+                  urlAfter.includes('application-submitted') ||
+                  urlAfter.includes('confirmation')) {
                 const screenshot = (await page.screenshot()).toString('base64');
                 lastScreenshot = screenshot;
                 addStep({
@@ -545,7 +568,46 @@ export class JobApplyService {
               }
 
               if (urlBefore === urlAfter && isSubmitApplication) {
-                // Same page after clicking final submit — might be a captcha or error
+                // Same page after clicking final submit — try to solve CAPTCHA first
+                const pageSnippet = postClickText.substring(0, 500);
+                this.logger.warn(`[Apply ${request.job.id}] Submit click didn't change page. Page text: ${pageSnippet}`);
+
+                // Try to find and click reCAPTCHA
+                const captchaSolved = await this.trySolveCaptcha(page);
+                if (captchaSolved) {
+                  addStep({
+                    action: 'analyzing',
+                    description: 'Solved CAPTCHA — retrying submit...',
+                    success: true,
+                  });
+                  // Retry the submit click after CAPTCHA
+                  await this.clickByText(page, submitBtn.text, submitBtn.selector);
+                  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+                  await this.sleep(3000);
+                  
+                  // Check again for confirmation
+                  const postRetryText = await page.evaluate(() => document.body.textContent?.toLowerCase() || '');
+                  const retryUrl = page.url();
+                  if (postRetryText.includes('application submitted') ||
+                      postRetryText.includes('your application has been submitted') ||
+                      postRetryText.includes('thank you for applying') ||
+                      postRetryText.includes('thanks for applying') ||
+                      retryUrl.includes('post-apply') ||
+                      retryUrl !== urlBefore) {
+                    const screenshot = (await page.screenshot()).toString('base64');
+                    lastScreenshot = screenshot;
+                    addStep({
+                      action: 'complete',
+                      description: 'Application submitted successfully!',
+                      screenshot,
+                      success: true,
+                    });
+                    applied = true;
+                    break;
+                  }
+                }
+
+                // Still stuck — needs manual review
                 const screenshot = (await page.screenshot()).toString('base64');
                 lastScreenshot = screenshot;
                 addStep({
@@ -1245,6 +1307,56 @@ Respond with ONLY the JSON array, no explanation. /no_think`;
 
     // Generic — no board-specific strategy
     return null;
+  }
+
+  /**
+   * Try to find and solve a reCAPTCHA on the page.
+   * Handles the "I'm not a robot" checkbox in its iframe.
+   * Returns true if a CAPTCHA was found and clicked.
+   */
+  private async trySolveCaptcha(page: Page): Promise<boolean> {
+    try {
+      // Strategy 1: reCAPTCHA iframe (most common)
+      const recaptchaFrame = page.frameLocator('iframe[src*="recaptcha"], iframe[title*="reCAPTCHA"]');
+      try {
+        const checkbox = recaptchaFrame.locator('.recaptcha-checkbox-border, #recaptcha-anchor');
+        if (await checkbox.first().isVisible({ timeout: 2000 }).catch(() => false)) {
+          await checkbox.first().click({ timeout: 5000 });
+          this.logger.log('Clicked reCAPTCHA checkbox');
+          await this.sleep(3000); // Wait for verification
+          return true;
+        }
+      } catch { /* not found */ }
+
+      // Strategy 2: hCaptcha iframe
+      const hcaptchaFrame = page.frameLocator('iframe[src*="hcaptcha"]');
+      try {
+        const hCheckbox = hcaptchaFrame.locator('#checkbox');
+        if (await hCheckbox.first().isVisible({ timeout: 2000 }).catch(() => false)) {
+          await hCheckbox.first().click({ timeout: 5000 });
+          this.logger.log('Clicked hCaptcha checkbox');
+          await this.sleep(3000);
+          return true;
+        }
+      } catch { /* not found */ }
+
+      // Strategy 3: Turnstile / CF Challenge (Cloudflare)
+      const cfFrame = page.frameLocator('iframe[src*="turnstile"], iframe[src*="challenges.cloudflare"]');
+      try {
+        const cfCheckbox = cfFrame.locator('input[type="checkbox"], .cb-i');
+        if (await cfCheckbox.first().isVisible({ timeout: 2000 }).catch(() => false)) {
+          await cfCheckbox.first().click({ timeout: 5000 });
+          this.logger.log('Clicked Cloudflare Turnstile checkbox');
+          await this.sleep(3000);
+          return true;
+        }
+      } catch { /* not found */ }
+
+      return false;
+    } catch (error) {
+      this.logger.warn(`CAPTCHA solve attempt failed: ${error}`);
+      return false;
+    }
   }
 
   /**
