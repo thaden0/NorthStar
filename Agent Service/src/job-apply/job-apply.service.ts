@@ -1342,23 +1342,45 @@ Respond with ONLY the JSON array, no explanation. /no_think`;
       });
       this.logger.log(`[CAPTCHA] Page has ${iframeInfo.length} iframes: ${JSON.stringify(iframeInfo)}`);
 
-      // Strategy 1: reCAPTCHA v2 "I'm not a robot" checkbox (in iframe)
+      // Strategy 1: reCAPTCHA v2/Enterprise "I'm not a robot" checkbox (in iframe)
+      // Target only "anchor" iframes (not bframe/challenge iframes)
       const recaptchaSelectors = [
-        'iframe[src*="recaptcha"]',
-        'iframe[title*="reCAPTCHA"]',
-        'iframe[title*="recaptcha"]',
+        'iframe[src*="recaptcha"][src*="anchor"]',
+        'iframe[title="reCAPTCHA"]',
+        'iframe[src*="recaptcha.net"]',
         'iframe[src*="google.com/recaptcha"]',
       ];
       for (const iframeSel of recaptchaSelectors) {
         try {
-          const frame = page.frameLocator(iframeSel);
-          const checkbox = frame.locator('.recaptcha-checkbox-border, #recaptcha-anchor, .rc-anchor-center-item, .recaptcha-checkbox');
-          if (await checkbox.first().isVisible({ timeout: 2000 }).catch(() => false)) {
-            this.logger.log(`[CAPTCHA] Found reCAPTCHA checkbox via ${iframeSel}, clicking...`);
-            await checkbox.first().click({ timeout: 5000 });
-            this.logger.log('[CAPTCHA] Clicked reCAPTCHA checkbox successfully');
-            await this.sleep(4000);
-            return true;
+          const frames = page.locator(iframeSel);
+          const count = await frames.count();
+          this.logger.log(`[CAPTCHA] Selector "${iframeSel}" matched ${count} iframes`);
+          
+          for (let i = 0; i < count; i++) {
+            try {
+              const frameLoc = page.frameLocator(`${iframeSel} >> nth=${i}`);
+              // Try multiple selectors for the checkbox inside the frame
+              const checkboxSelectors = [
+                '[role="checkbox"]',
+                '#recaptcha-anchor',
+                '.recaptcha-checkbox-border',
+                '.recaptcha-checkbox',
+                '.rc-anchor-center-item',
+                'span[role="checkbox"]',
+              ];
+              for (const cbSel of checkboxSelectors) {
+                const cb = frameLoc.locator(cbSel);
+                if (await cb.first().isVisible({ timeout: 1500 }).catch(() => false)) {
+                  this.logger.log(`[CAPTCHA] Found checkbox with "${cbSel}" in iframe #${i} (${iframeSel}), clicking...`);
+                  await cb.first().click({ timeout: 5000 });
+                  this.logger.log('[CAPTCHA] Clicked reCAPTCHA checkbox successfully!');
+                  await this.sleep(4000);
+                  return true;
+                }
+              }
+            } catch (e) {
+              this.logger.warn(`[CAPTCHA] Error checking iframe #${i}: ${e}`);
+            }
           }
         } catch (e) {
           this.logger.warn(`[CAPTCHA] reCAPTCHA attempt with ${iframeSel} failed: ${e}`);
