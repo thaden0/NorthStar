@@ -504,15 +504,59 @@ export class JobApplyService {
           // Check for submit/continue/next buttons first (Indeed wizard steps like "Add Resume")
           if (analysis.submitButtons.length > 0) {
             const submitBtn = analysis.submitButtons[0];
+            const isSubmitApplication = submitBtn.text.toLowerCase().includes('submit your application') ||
+              submitBtn.text.toLowerCase().includes('submit application');
+
             addStep({
               action: 'clicking',
-              description: `Clicking "${submitBtn.text}" to continue...`,
+              description: `Clicking "${submitBtn.text}"${isSubmitApplication ? ' (final submit)' : ' to continue'}...`,
               success: true,
             });
             try {
+              // Scroll the button into view first
+              await page.evaluate((sel) => {
+                const el = document.querySelector(sel) as HTMLElement;
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }, submitBtn.selector);
+              await this.sleep(500);
+
+              const urlBefore = page.url();
               await this.clickByText(page, submitBtn.text, submitBtn.selector);
-              await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-              await this.sleep(2000);
+              await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+              await this.sleep(3000);
+
+              const urlAfter = page.url();
+              // Check if page changed or if we see confirmation
+              const postClickText = await page.evaluate(() => document.body.textContent?.toLowerCase() || '');
+              if (postClickText.includes('application submitted') ||
+                  postClickText.includes('thank you for applying') ||
+                  postClickText.includes('application received') ||
+                  postClickText.includes('you have successfully applied')) {
+                const screenshot = (await page.screenshot()).toString('base64');
+                lastScreenshot = screenshot;
+                addStep({
+                  action: 'complete',
+                  description: 'Application submitted successfully!',
+                  screenshot,
+                  success: true,
+                });
+                applied = true;
+                break;
+              }
+
+              if (urlBefore === urlAfter && isSubmitApplication) {
+                // Same page after clicking final submit — might be a captcha or error
+                const screenshot = (await page.screenshot()).toString('base64');
+                lastScreenshot = screenshot;
+                addStep({
+                  action: 'needs_review',
+                  description: 'Clicked submit but page did not change — may need manual review (CAPTCHA, missing fields, etc.)',
+                  screenshot,
+                  success: false,
+                });
+                needsReview = true;
+                break;
+              }
               consecutiveErrors = 0;
             } catch (err) {
               consecutiveErrors++;
