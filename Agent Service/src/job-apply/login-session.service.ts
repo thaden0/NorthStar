@@ -1,7 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { chromium, BrowserContext, Page } from 'playwright';
+import { BrowserContext, Page } from 'playwright';
+// @ts-expect-error - playwright-extra doesn't have type declarations
+import { chromium as stealthChromium } from 'playwright-extra';
+// @ts-expect-error - no type declarations
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import * as fs from 'fs';
 import * as path from 'path';
+
+// Add stealth plugin to avoid bot detection (hides automation fingerprints)
+stealthChromium.use(StealthPlugin());
+
+// Use stealth chromium for all persistent contexts
+const chromium = stealthChromium;
 
 export interface LoginSession {
   id: string;
