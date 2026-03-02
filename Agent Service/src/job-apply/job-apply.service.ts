@@ -1342,33 +1342,43 @@ Respond with ONLY the JSON array, no explanation. /no_think`;
       });
       this.logger.log(`[CAPTCHA] Page has ${iframeInfo.length} iframes: ${JSON.stringify(iframeInfo)}`);
 
-      // Step 1: Find the anchor iframe (checkbox) — supports both standard and Enterprise reCAPTCHA
-      const anchorFrame = page.frames().find(f =>
+      // Step 1: Find ALL anchor iframes — Indeed has multiple reCAPTCHA Enterprise anchors
+      const anchorFrames = page.frames().filter(f =>
         f.url().includes('api2/anchor') || f.url().includes('enterprise/anchor')
       );
 
-      if (!anchorFrame) {
-        this.logger.log('[CAPTCHA] No reCAPTCHA anchor iframe found');
+      if (anchorFrames.length === 0) {
+        this.logger.log('[CAPTCHA] No reCAPTCHA anchor iframes found');
         return false;
       }
 
-      this.logger.log(`[CAPTCHA] Found anchor frame: ${anchorFrame.url().substring(0, 100)}`);
+      this.logger.log(`[CAPTCHA] Found ${anchorFrames.length} anchor frames`);
 
-      // Step 2: Click the checkbox
-      const checkbox = anchorFrame.locator('#recaptcha-anchor');
-      if (await checkbox.isVisible({ timeout: 3000 }).catch(() => false)) {
-        // Add random delay to seem human
-        await this.sleep(Math.floor(Math.random() * 200) + 100);
-        await checkbox.click({ delay: Math.floor(Math.random() * 120) + 30 });
-        this.logger.log('[CAPTCHA] Clicked reCAPTCHA checkbox');
-        await this.sleep(3000);
-      } else {
-        this.logger.log('[CAPTCHA] Checkbox not visible in anchor frame');
+      // Step 2: Try each anchor frame to find the one with a visible checkbox
+      let clickedFrame: ReturnType<typeof page.frames>[number] | null = null;
+      for (let i = 0; i < anchorFrames.length; i++) {
+        const frame = anchorFrames[i];
+        this.logger.log(`[CAPTCHA] Checking anchor frame #${i}: ${frame.url().substring(0, 120)}`);
+        const checkbox = frame.locator('#recaptcha-anchor');
+        if (await checkbox.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await this.sleep(Math.floor(Math.random() * 200) + 100);
+          await checkbox.click({ delay: Math.floor(Math.random() * 120) + 30 });
+          this.logger.log(`[CAPTCHA] Clicked reCAPTCHA checkbox in anchor frame #${i}`);
+          clickedFrame = frame;
+          await this.sleep(3000);
+          break;
+        } else {
+          this.logger.log(`[CAPTCHA] Checkbox not visible in anchor frame #${i}`);
+        }
+      }
+
+      if (!clickedFrame) {
+        this.logger.log('[CAPTCHA] Checkbox not visible in any anchor frame');
         return false;
       }
 
       // Step 3: Check if checkbox is already checked (solved without challenge)
-      const isChecked = await anchorFrame.locator('#recaptcha-anchor[aria-checked="true"]')
+      const isChecked = await clickedFrame.locator('#recaptcha-anchor[aria-checked="true"]')
         .isVisible({ timeout: 2000 }).catch(() => false);
       if (isChecked) {
         this.logger.log('[CAPTCHA] Checkbox passed without challenge!');
@@ -1470,7 +1480,7 @@ Respond with ONLY the JSON array, no explanation. /no_think`;
           await this.sleep(3000);
 
           // Check if solved
-          const solved = await anchorFrame.locator('#recaptcha-anchor[aria-checked="true"]')
+          const solved = await clickedFrame.locator('#recaptcha-anchor[aria-checked="true"]')
             .isVisible({ timeout: 5000 }).catch(() => false);
           if (solved) {
             this.logger.log('[CAPTCHA] ✅ reCAPTCHA solved successfully via audio!');

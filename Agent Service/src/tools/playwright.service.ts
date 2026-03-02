@@ -1,6 +1,11 @@
 import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { chromium, Browser, Page, BrowserContext } from 'playwright';
+import { Browser, Page, BrowserContext } from 'playwright';
+import { chromium } from 'playwright-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+
+// Apply stealth plugin globally — hides automation fingerprints
+chromium.use(StealthPlugin());
 
 export interface BrowseResult {
   url: string;
@@ -37,7 +42,6 @@ export class PlaywrightService implements OnModuleInit, OnModuleDestroy {
       await this.initBrowser();
     } catch (error) {
       this.logger.error(`Failed to initialize Playwright browser. Web browsing will be unavailable: ${error}`);
-      // Don't throw - let the service continue without browsing capability
     }
   }
 
@@ -47,13 +51,22 @@ export class PlaywrightService implements OnModuleInit, OnModuleDestroy {
 
   private async initBrowser() {
     if (!this.browser) {
-      this.logger.log('Initializing Playwright browser...');
+      this.logger.log('Initializing stealth Playwright browser...');
       this.browser = await chromium.launch({
         headless: this.headless,
         executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-blink-features=AutomationControlled',
+          '--disable-features=IsolateOrigins,site-per-process',
+          '--disable-infobars',
+          '--window-size=1920,1080',
+          '--start-maximized',
+        ],
       });
-      this.logger.log('Playwright browser initialized');
+      this.logger.log('Stealth Playwright browser initialized');
     }
   }
 
@@ -70,9 +83,13 @@ export class PlaywrightService implements OnModuleInit, OnModuleDestroy {
       await this.initBrowser();
     }
     return this.browser!.newContext({
-      userAgent:
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
       viewport: { width: 1920, height: 1080 },
+      locale: 'en-US',
+      timezoneId: 'America/New_York',
+      permissions: ['geolocation'],
+      javaScriptEnabled: true,
+      bypassCSP: true,
     });
   }
 
