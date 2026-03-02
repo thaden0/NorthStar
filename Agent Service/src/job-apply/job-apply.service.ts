@@ -618,8 +618,15 @@ export class JobApplyService {
     const result = await page.evaluate(() => {
       // Helper: generate a robust selector for an element
       function getSelector(el: Element): string {
-        // 1. ID is best
-        if (el.id) return `#${el.id}`;
+        // 1. ID is best (but escape special chars for CSS)
+        if (el.id) {
+          // React IDs like :r0: contain colons — need CSS.escape
+          const hasSpecial = /[^a-zA-Z0-9_-]/.test(el.id);
+          if (hasSpecial) {
+            return `[id="${el.id}"]`;
+          }
+          return `#${el.id}`;
+        }
         // 2. data-testid
         const testId = el.getAttribute('data-testid') || el.getAttribute('data-test-id');
         if (testId) return `[data-testid="${testId}"]`;
@@ -811,6 +818,11 @@ export class JobApplyService {
         .filter(el => {
           const parent = el.closest('nav, header, [role="search"]');
           if (parent) return false;
+          // Exclude email subscription / notification checkboxes
+          const labelEl = (el as HTMLInputElement).id ? document.querySelector(`label[for="${(el as HTMLInputElement).id}"]`) : null;
+          const parentLabel = el.closest('label');
+          const labelText = (labelEl?.textContent || parentLabel?.textContent || '').toLowerCase();
+          if (labelText.includes('email update') || labelText.includes('job alert') || labelText.includes('newsletter') || labelText.includes('notify me') || labelText.includes('subscribe')) return false;
           const pEl = el.closest('label, div, li');
           if (pEl) {
             const r = pEl.getBoundingClientRect();
