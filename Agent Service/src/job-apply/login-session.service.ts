@@ -1,8 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { BrowserContext, Page } from 'playwright';
-// @ts-expect-error - playwright-extra doesn't have type declarations
 import { chromium as stealthChromium } from 'playwright-extra';
-// @ts-expect-error - no type declarations
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import * as fs from 'fs';
 import * as path from 'path';
