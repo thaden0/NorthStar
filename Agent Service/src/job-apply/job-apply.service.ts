@@ -1362,7 +1362,17 @@ Respond with ONLY the JSON array, no explanation. /no_think`;
         const checkbox = frame.locator('#recaptcha-anchor');
         if (await checkbox.isVisible({ timeout: 2000 }).catch(() => false)) {
           await this.sleep(Math.floor(Math.random() * 200) + 100);
-          await checkbox.click({ delay: Math.floor(Math.random() * 120) + 30 });
+          // Use force:true to bypass the invisible overlay div that blocks pointer events
+          try {
+            await checkbox.click({ force: true, delay: Math.floor(Math.random() * 120) + 30, timeout: 5000 });
+          } catch {
+            // Fallback: dispatch click event directly via JS
+            this.logger.log(`[CAPTCHA] Force click failed, using JS dispatch in frame #${i}`);
+            await frame.evaluate(() => {
+              const el = document.querySelector('#recaptcha-anchor') as HTMLElement;
+              if (el) el.click();
+            });
+          }
           this.logger.log(`[CAPTCHA] Clicked reCAPTCHA checkbox in anchor frame #${i}`);
           clickedFrame = frame;
           await this.sleep(3000);
