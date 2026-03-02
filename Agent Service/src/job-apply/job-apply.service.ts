@@ -225,14 +225,22 @@ export class JobApplyService {
           const bodyText = await page.evaluate(() => document.body.textContent?.toLowerCase() || '');
 
           if (bodyText.includes('sign in') || bodyText.includes('log in') || bodyText.includes('create an account')) {
-            addStep({
-              action: 'needs_review',
-              description: `${boardStrategy.name} requires login to apply`,
-              screenshot,
-              success: false,
-              details: 'This job requires you to log in or create an account on the job board. Please apply manually.',
-            });
-            return { status: 'needs_review', steps, lastScreenshot };
+            // Check if this looks like a login redirect (not just header text)
+            const isLoginPage = newUrl.includes('/auth') || newUrl.includes('/login') || newUrl.includes('/signin') ||
+              bodyText.includes('sign in to apply') || bodyText.includes('log in to apply');
+            if (isLoginPage) {
+              const description = usedPersistentProfile
+                ? `${boardStrategy.name} session has expired — please re-login in Settings`
+                : `${boardStrategy.name} requires login to apply`;
+              addStep({
+                action: 'needs_review',
+                description,
+                screenshot,
+                success: false,
+                details: 'This job requires you to log in or create an account on the job board. Please apply manually.',
+              });
+              return { status: 'needs_review', steps, lastScreenshot };
+            }
           }
 
           this.logger.log(`[Apply ${request.job.id}] After apply click, now on: ${newUrl}`);
