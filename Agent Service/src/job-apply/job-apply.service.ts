@@ -69,7 +69,7 @@ interface PageAnalysis {
 @Injectable()
 export class JobApplyService {
   private readonly logger = new Logger(JobApplyService.name);
-  private readonly defaultModel = 'qwen3:latest';
+  private readonly defaultModel = 'phi4:latest';
   private readonly MAX_STEPS = 30;
 
   constructor(

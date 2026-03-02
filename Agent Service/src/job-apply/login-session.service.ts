@@ -351,10 +351,19 @@ export class LoginSessionService {
 
   /**
    * Get a BrowserContext using a persistent profile for applying.
+   * IMPORTANT: Closes any active login session first to avoid profile directory lock.
    */
   async getApplyContext(userId: string, board: string): Promise<BrowserContext | null> {
     if (!this.hasProfile(userId, board)) {
       return null;
+    }
+
+    // Close any active login session that's holding the profile lock
+    const sessionKey = `${userId}:${board}`;
+    if (this.activeSessions.has(sessionKey)) {
+      this.logger.log(`Closing active login session for ${board} before apply`);
+      await this.endLoginSession(sessionKey);
+      await new Promise(r => setTimeout(r, 1000)); // Wait for browser to fully close
     }
 
     const profilePath = this.getProfilePath(userId, board);
