@@ -521,6 +521,15 @@ export class JobApplyService {
               success: true,
             });
             try {
+              // Try to solve any CAPTCHA BEFORE clicking submit
+              if (isSubmitApplication) {
+                const preCaptcha = await this.trySolveCaptcha(page);
+                if (preCaptcha) {
+                  addStep({ action: 'analyzing', description: 'Solved CAPTCHA checkbox', success: true });
+                  await this.sleep(1000);
+                }
+              }
+
               // Scroll the button into view first
               await page.evaluate((sel) => {
                 const el = document.querySelector(sel) as HTMLElement;
@@ -1318,51 +1327,83 @@ Respond with ONLY the JSON array, no explanation. /no_think`;
   }
 
   /**
-   * Try to find and solve a reCAPTCHA on the page.
-   * Handles the "I'm not a robot" checkbox in its iframe.
+   * Try to find and solve a CAPTCHA on the page (reCAPTCHA "I'm not a robot", hCaptcha, Turnstile).
    * Returns true if a CAPTCHA was found and clicked.
    */
   private async trySolveCaptcha(page: Page): Promise<boolean> {
     try {
-      // Strategy 1: reCAPTCHA iframe (most common)
-      const recaptchaFrame = page.frameLocator('iframe[src*="recaptcha"], iframe[title*="reCAPTCHA"]');
+      // Log all iframes on page for debugging
+      const iframeInfo = await page.evaluate(() => {
+        return Array.from(document.querySelectorAll('iframe')).map(f => ({
+          src: (f.src || '').substring(0, 150),
+          title: f.title || '',
+          id: f.id || '',
+        }));
+      });
+      this.logger.log(`[CAPTCHA] Page has ${iframeInfo.length} iframes: ${JSON.stringify(iframeInfo)}`);
+
+      // Strategy 1: reCAPTCHA v2 "I'm not a robot" checkbox (in iframe)
+      const recaptchaSelectors = [
+        'iframe[src*="recaptcha"]',
+        'iframe[title*="reCAPTCHA"]',
+        'iframe[title*="recaptcha"]',
+        'iframe[src*="google.com/recaptcha"]',
+      ];
+      for (const iframeSel of recaptchaSelectors) {
+        try {
+          const frame = page.frameLocator(iframeSel);
+          const checkbox = frame.locator('.recaptcha-checkbox-border, #recaptcha-anchor, .rc-anchor-center-item, .recaptcha-checkbox');
+          if (await checkbox.first().isVisible({ timeout: 2000 }).catch(() => false)) {
+            this.logger.log(`[CAPTCHA] Found reCAPTCHA checkbox via ${iframeSel}, clicking...`);
+            await checkbox.first().click({ timeout: 5000 });
+            this.logger.log('[CAPTCHA] Clicked reCAPTCHA checkbox successfully');
+            await this.sleep(4000);
+            return true;
+          }
+        } catch (e) {
+          this.logger.warn(`[CAPTCHA] reCAPTCHA attempt with ${iframeSel} failed: ${e}`);
+        }
+      }
+
+      // Strategy 2: Click the reCAPTCHA container div directly (sometimes works)
       try {
-        const checkbox = recaptchaFrame.locator('.recaptcha-checkbox-border, #recaptcha-anchor');
+        const recaptchaDiv = page.locator('.g-recaptcha, [data-sitekey]');
+        if (await recaptchaDiv.first().isVisible({ timeout: 1000 }).catch(() => false)) {
+          this.logger.log('[CAPTCHA] Found .g-recaptcha div on page, clicking...');
+          await recaptchaDiv.first().click({ timeout: 5000 });
+          await this.sleep(4000);
+          return true;
+        }
+      } catch { /* not found */ }
+
+      // Strategy 3: hCaptcha
+      try {
+        const frame = page.frameLocator('iframe[src*="hcaptcha"]');
+        const checkbox = frame.locator('#checkbox, .check');
         if (await checkbox.first().isVisible({ timeout: 2000 }).catch(() => false)) {
+          this.logger.log('[CAPTCHA] Found hCaptcha, clicking...');
           await checkbox.first().click({ timeout: 5000 });
-          this.logger.log('Clicked reCAPTCHA checkbox');
-          await this.sleep(3000); // Wait for verification
+          await this.sleep(4000);
           return true;
         }
       } catch { /* not found */ }
 
-      // Strategy 2: hCaptcha iframe
-      const hcaptchaFrame = page.frameLocator('iframe[src*="hcaptcha"]');
+      // Strategy 4: Cloudflare Turnstile
       try {
-        const hCheckbox = hcaptchaFrame.locator('#checkbox');
-        if (await hCheckbox.first().isVisible({ timeout: 2000 }).catch(() => false)) {
-          await hCheckbox.first().click({ timeout: 5000 });
-          this.logger.log('Clicked hCaptcha checkbox');
-          await this.sleep(3000);
+        const frame = page.frameLocator('iframe[src*="turnstile"], iframe[src*="challenges.cloudflare"]');
+        const checkbox = frame.locator('input[type="checkbox"], .cb-i, body');
+        if (await checkbox.first().isVisible({ timeout: 2000 }).catch(() => false)) {
+          this.logger.log('[CAPTCHA] Found Turnstile, clicking...');
+          await checkbox.first().click({ timeout: 5000 });
+          await this.sleep(4000);
           return true;
         }
       } catch { /* not found */ }
 
-      // Strategy 3: Turnstile / CF Challenge (Cloudflare)
-      const cfFrame = page.frameLocator('iframe[src*="turnstile"], iframe[src*="challenges.cloudflare"]');
-      try {
-        const cfCheckbox = cfFrame.locator('input[type="checkbox"], .cb-i');
-        if (await cfCheckbox.first().isVisible({ timeout: 2000 }).catch(() => false)) {
-          await cfCheckbox.first().click({ timeout: 5000 });
-          this.logger.log('Clicked Cloudflare Turnstile checkbox');
-          await this.sleep(3000);
-          return true;
-        }
-      } catch { /* not found */ }
-
+      this.logger.log('[CAPTCHA] No CAPTCHA elements found on page');
       return false;
     } catch (error) {
-      this.logger.warn(`CAPTCHA solve attempt failed: ${error}`);
+      this.logger.warn(`[CAPTCHA] Solve attempt failed: ${error}`);
       return false;
     }
   }
